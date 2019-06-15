@@ -1,9 +1,11 @@
 OBJ=hantek.o \
-	hantek_main.o
+	hantek_main.o \
+	hantek_hexdump.o
 
 TARGET=hantek
 
 OFLAGS=-O0 -ggdb
+DEFINES=-DHT_DEBUG
 
 LIBUSB_CFLAGS=`pkg-config --cflags libusb-1.0`
 LIBUSB_LIBS=`pkg-config --libs libusb-1.0`
