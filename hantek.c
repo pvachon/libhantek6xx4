@@ -19,11 +19,7 @@ HRESULT _hantek_device_find(libusb_device **pdev)
     libusb_device *dev = NULL;
     ssize_t nr_devs = 0;
 
-    if (NULL == pdev) {
-        ret = H_ERR_BAD_ARGS;
-        DEBUG("Bad arguments");
-        goto done;
-    }
+    HASSERT_ARG(NULL != pdev);
 
     *pdev = NULL;
 
@@ -84,11 +80,9 @@ HRESULT _hantek_check_ready(libusb_device_handle *dev, bool *pready)
     int uret = 0;
     uint8_t raw[10] = { 0 };
 
-    if (NULL == pready) {
-        DEBUG("Bad arguments");
-        ret = H_ERR_BAD_ARGS;
-        goto done;
-    }
+    HASSERT_ARG(NULL != dev);
+    HASSERT_ARG(NULL != pready);
+
     *pready = false;
 
     if (0 >= (uret = libusb_control_transfer(dev,
@@ -125,11 +119,10 @@ HRESULT _hantek_bulk_cmd_out(libusb_device_handle *dev, uint8_t *data, size_t le
         transferred = 0;
     bool ready = false;
 
-    if (NULL == ptransferred) {
-        DEBUG("Bad arguments");
-        ret = H_ERR_BAD_ARGS;
-        goto done;
-    }
+    HASSERT_ARG(NULL != dev);
+    HASSERT_ARG(NULL != data);
+    HASSERT_ARG(0 != len);
+    HASSERT_ARG(NULL != ptransferred);
 
     *ptransferred = 0;
 
@@ -191,11 +184,10 @@ HRESULT _hantek_bulk_in(libusb_device_handle *hdl, uint8_t *data, size_t buf_len
     int transferred = 0,
         uret = 0;
 
-    if (NULL == ptransferred || 0 == buf_len || NULL == data) {
-        DEBUG("Bad arguments");
-        ret = H_ERR_BAD_ARGS;
-        goto done;
-    }
+    HASSERT_ARG(NULL != hdl);
+    HASSERT_ARG(NULL != data);
+    HASSERT_ARG(0 != buf_len);
+    HASSERT_ARG(NULL != ptransferred);
 
     if (0 != (uret = libusb_bulk_transfer(hdl,
                                           HT6000_EP_IN | (1 << 7),
@@ -223,11 +215,9 @@ HRESULT _hantek_read_config_attrs(libusb_device_handle *hdl, uint16_t value, voi
 
     int uret = 0;
 
-    if (NULL == dst || NULL == hdl || 0 == len_bytes) {
-        DEBUG("Bad arguments");
-        ret = H_ERR_BAD_ARGS;
-        goto done;
-    }
+    HASSERT_ARG(NULL != hdl);
+    HASSERT_ARG(NULL != dst);
+    HASSERT_ARG(0 != len_bytes);
 
     if (0 >= (uret = libusb_control_transfer(hdl,
                     LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
@@ -254,11 +244,8 @@ HRESULT _hantek_get_id_string(libusb_device_handle *dev, char *id_string, size_t
 {
     HRESULT ret = H_OK;
 
-    if (NULL == id_string || 0 == len) {
-        DEBUG("Bad arguments");
-        ret = H_ERR_BAD_ARGS;
-        goto done;
-    }
+    HASSERT_ARG(NULL != id_string);
+    HASSERT_ARG(0 != len);
 
     if (H_FAILED(ret = _hantek_read_config_attrs(dev, HT_VALUE_GET_INFO_STRING, id_string, len))) {
         DEBUG("Failed to read back ID string, aborting.");
@@ -279,11 +266,7 @@ HRESULT _hantek_device_reset(libusb_device_handle *hdl)
 
     DEBUG("----> Sending device reset");
 
-    if (NULL == hdl) {
-        DEBUG("Bad arguments");
-        ret = H_ERR_BAD_ARGS;
-        goto done;
-    }
+    HASSERT_ARG(NULL != hdl);
 
     if (H_FAILED(ret = _hantek_bulk_cmd_out(hdl, reset_cmd, sizeof(reset_cmd), &transferred))) {
         DEBUG("Failed to send the reset command");
@@ -313,10 +296,7 @@ HRESULT _hantek_wake_device(libusb_device_handle *hdl)
         { 0x08, 0x00, 0x00, 0x12, 0x38, 0x01, 0x02, 0x00 }
     };
 
-    if (NULL == hdl) {
-        ret = H_ERR_BAD_ARGS;
-        goto done;
-    }
+    HASSERT_ARG(NULL != hdl);
 
     for (size_t i = 0; i < 5; i++) {
         size_t transferred = 0;
@@ -346,11 +326,8 @@ HRESULT _hantek_get_fpga_version(libusb_device_handle *hdl, uint16_t *pfpga_ver)
     bool ready = false;
     uint8_t rx_buf[512];
 
-    if (NULL == hdl || NULL == pfpga_ver) {
-        DEBUG("Bad arguments.");
-        ret = H_ERR_BAD_ARGS;
-        goto done;
-    }
+    HASSERT_ARG(NULL != hdl);
+    HASSERT_ARG(NULL != pfpga_ver);
 
     *pfpga_ver = 0;
 
@@ -387,11 +364,9 @@ HRESULT _hantek_get_calibration_data(libusb_device_handle *hdl, uint16_t *cal_da
 {
     HRESULT ret = H_OK;
 
-    if (NULL == cal_data || 0 == nr_cal_vals || NULL == hdl) {
-        DEBUG("Bad arguments");
-        ret = H_ERR_BAD_ARGS;
-        goto done;
-    }
+    HASSERT_ARG(NULL != hdl);
+    HASSERT_ARG(NULL != cal_data);
+    HASSERT_ARG(0 != nr_cal_vals);
 
     if (H_FAILED(ret = _hantek_read_config_attrs(hdl, HT_VALUE_GET_CALIBRATION_DAT, cal_data, sizeof(uint16_t) * nr_cal_vals))) {
         DEBUG("Failed to read back calibration values, aborting.");
@@ -411,11 +386,7 @@ HRESULT hantek_open_device(struct hantek_device **pdev)
     struct hantek_device *nhdev = NULL;
     int uret = -1;
 
-    if (NULL == pdev) {
-        ret = H_ERR_BAD_ARGS;
-        DEBUG("Bad arguments");
-        goto done;
-    }
+    HASSERT_ARG(NULL != pdev);
 
     *pdev = NULL;
 
@@ -499,11 +470,8 @@ HRESULT hantek_close_device(struct hantek_device **pdev)
 
     struct hantek_device *hdev = NULL;
 
-    if (NULL == pdev || NULL == *pdev) {
-        DEBUG("Bad arguments");
-        ret = H_ERR_BAD_ARGS;
-        goto done;
-    }
+    HASSERT_ARG(NULL != pdev);
+    HASSERT_ARG(NULL != *pdev);
 
     hdev = *pdev;
 
@@ -515,6 +483,31 @@ HRESULT hantek_close_device(struct hantek_device **pdev)
     if (NULL != hdev->dev) {
         libusb_unref_device(hdev->dev);
         hdev->dev = NULL;
+    }
+
+done:
+    return ret;
+}
+
+HRESULT hantek_set_sampling_rate(struct hantek_device *dev, enum hantek_sample_times sample_spacing)
+{
+    HRESULT ret = H_OK;
+
+    uint8_t message[6] = { HT_MSG_SET_TIME_DIVISION, 0x0 };
+    uint32_t spacing = (uint32_t)sample_spacing - 1;
+    size_t transferred = 0;
+
+    HASSERT_ARG(NULL != dev);
+
+    message[2] = spacing & 0xff;
+    message[3] = (spacing >> 8) & 0xff;
+    message[4] = (spacing >> 16) & 0xff;
+    message[5] = (spacing >> 24) & 0xff;
+
+    if (H_FAILED(ret = _hantek_bulk_cmd_out(dev->hdl, message, sizeof(message), &transferred))) {
+        DEBUG("Failed to set sampling rate.");
+        ret = H_ERR_BAD_SAMPLE_RATE;
+        goto done;
     }
 
 done:

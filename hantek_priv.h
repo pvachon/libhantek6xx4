@@ -16,6 +16,8 @@
 #define DEBUG(...)
 #endif /* defined(HT_DEBUG) */
 
+#define HASSERT_ARG(x) do { if (!((x))) { DEBUG("Bad Argument"); return H_ERR_BAD_ARGS; } } while (0)
+
 struct hantek_device {
     struct libusb_device *dev;
     struct libusb_device_handle *hdl;

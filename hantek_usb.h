@@ -38,6 +38,7 @@ DSO...6000....V1
 #define HT_VALUE_GET_INFO_STRING			0x1580
 #define HT_VALUE_GET_CALIBRATION_DAT        0x1600
 #define HT_MAX_INFO_STRING_LEN              0x47
+#define HT_CALIBRATION_INFO_ENTRIES         576
 
 /**
  * It seems that a control transfer of type 0xb2 always is sent before sending data to EP2.
@@ -45,10 +46,10 @@ DSO...6000....V1
  */
 #define HT_REQUEST_CHECK_READY              0xb2
 
-
 /**
  * Message IDs, to the best of our guesses
  */
 #define HT_MSG_INITIALIZE                   0x0c
 #define HT_MSG_GET_HW_VERSION               0x09
+#define HT_MSG_SET_TIME_DIVISION            0x0f
 
