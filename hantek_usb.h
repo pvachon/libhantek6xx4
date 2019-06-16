@@ -4,6 +4,9 @@
  * Constants associated with the Hantek 6000 USB on-the-wire protocol
  */
 
+#define HT6000_EP_OUT                       2
+#define HT6000_EP_IN                        6
+
 /**
  * Control transfer types
  */
@@ -33,7 +36,7 @@ DSO...6000....V1
  */
 #define HT_REQUEST_GET_INFO                 0xa2
 #define HT_VALUE_GET_INFO_STRING			0x1580
-#define HT_MAX_INFO_STRING_LEN              256
+#define HT_MAX_INFO_STRING_LEN              0x47
 
 /**
  * It seems that a control transfer of type 0xb2 always is sent before sending data to EP2.
@@ -41,3 +44,8 @@ DSO...6000....V1
  */
 #define HT_REQUEST_CHECK_READY              0xb2
 
+
+/**
+ * Message IDs, to the best of our guesses
+ */
+#define HT_MSG_INITIALIZE                   0x0c

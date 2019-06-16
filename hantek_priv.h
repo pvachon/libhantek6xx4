@@ -1,7 +1,9 @@
 #pragma once
 
 #include <hantek.h>
+#include <hantek_usb.h>
 #include <libusb.h>
+#include <stdint.h>
 
 #define HANTEK_VID          0x04b5
 
@@ -17,5 +19,7 @@
 struct hantek_device {
     struct libusb_device *dev;
     struct libusb_device_handle *hdl;
+    uint16_t fpga_version;
+    char id_string[HT_MAX_INFO_STRING_LEN];
 };
 

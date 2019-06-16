@@ -15,6 +15,7 @@ typedef int32_t HRESULT;
 #define H_OK                        0x0
 #define H_ERR_BAD_ARGS              H_ERR(H_SUB_NONE, 1)
 #define H_ERR_NOT_READY             H_ERR(H_SUB_NONE, 2)
+#define H_ERR_NO_MEM                H_ERR(H_SUB_NONE, 3)
 
 #define H_ERR_NOT_FOUND             H_ERR(H_SUB_LIBUSB, 1)
 #define H_ERR_CONTROL_FAIL          H_ERR(H_SUB_LIBUSB, 2)
