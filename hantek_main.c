@@ -13,6 +13,11 @@ int main(int argc, const char *argv[])
         goto done;
     }
 
+    if (H_FAILED(hantek_close_device(&dev))) {
+        printf("Failed to close device, aborting.\n");
+        goto done;
+    }
+
 done:
 	return EXIT_SUCCESS;
 }

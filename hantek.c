@@ -217,13 +217,42 @@ done:
 }
 
 static
-HRESULT _hantek_get_id_string(libusb_device_handle *dev, char *id_string, size_t len)
+HRESULT _hantek_read_config_attrs(libusb_device_handle *hdl, uint16_t value, void *dst, size_t len_bytes)
 {
     HRESULT ret = H_OK;
 
     int uret = 0;
-    uint8_t raw[HT_MAX_INFO_STRING_LEN] = { 0 };
-    size_t outlen = HT_MAX_INFO_STRING_LEN > len ? len : HT_MAX_INFO_STRING_LEN;
+
+    if (NULL == dst || NULL == hdl || 0 == len_bytes) {
+        DEBUG("Bad arguments");
+        ret = H_ERR_BAD_ARGS;
+        goto done;
+    }
+
+    if (0 >= (uret = libusb_control_transfer(hdl,
+                    LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
+                    HT_REQUEST_GET_INFO,
+                    value,
+                    0x0,
+                    dst,
+                    len_bytes,
+                    0)))
+    {
+        DEBUG("Failed to request device attribute %04x, (uret = %d), aborting.", value, uret);
+        ret = H_ERR_CONTROL_FAIL;
+        goto done;
+    }
+
+    DEBUG("! Read back %04x: %d bytes (expected = %zu)", value, uret, len_bytes);
+
+done:
+    return ret;
+}
+
+static
+HRESULT _hantek_get_id_string(libusb_device_handle *dev, char *id_string, size_t len)
+{
+    HRESULT ret = H_OK;
 
     if (NULL == id_string || 0 == len) {
         DEBUG("Bad arguments");
@@ -231,21 +260,10 @@ HRESULT _hantek_get_id_string(libusb_device_handle *dev, char *id_string, size_t
         goto done;
     }
 
-    if (0 >= (uret = libusb_control_transfer(dev,
-                    LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
-                    HT_REQUEST_GET_INFO,
-                    HT_VALUE_GET_INFO_STRING,
-                    0x0,
-                    raw,
-                    sizeof(raw),
-                    0)))
-    {
-        DEBUG("Failed to request device ID string, (uret = %d), aborting.", uret);
-        ret = H_ERR_CONTROL_FAIL;
+    if (H_FAILED(ret = _hantek_read_config_attrs(dev, HT_VALUE_GET_INFO_STRING, id_string, len))) {
+        DEBUG("Failed to read back ID string, aborting.");
         goto done;
     }
-
-    memcpy(id_string, raw, outlen);
 
 done:
     return ret;
@@ -364,6 +382,26 @@ done:
     return ret;
 }
 
+static
+HRESULT _hantek_get_calibration_data(libusb_device_handle *hdl, uint16_t *cal_data, size_t nr_cal_vals)
+{
+    HRESULT ret = H_OK;
+
+    if (NULL == cal_data || 0 == nr_cal_vals || NULL == hdl) {
+        DEBUG("Bad arguments");
+        ret = H_ERR_BAD_ARGS;
+        goto done;
+    }
+
+    if (H_FAILED(ret = _hantek_read_config_attrs(hdl, HT_VALUE_GET_CALIBRATION_DAT, cal_data, sizeof(uint16_t) * nr_cal_vals))) {
+        DEBUG("Failed to read back calibration values, aborting.");
+        goto done;
+    }
+
+done:
+    return ret;
+}
+
 HRESULT hantek_open_device(struct hantek_device **pdev)
 {
     HRESULT ret = H_OK;
@@ -439,6 +477,11 @@ HRESULT hantek_open_device(struct hantek_device **pdev)
     *pdev = nhdev;
 done:
     if (H_FAILED(ret)) {
+        if (NULL != nhdev) {
+            free(nhdev);
+            nhdev = NULL;
+        }
+
         if (NULL != hdl) {
             libusb_close(hdl);
         }
@@ -447,6 +490,34 @@ done:
             libusb_unref_device(dev);
         }
     }
+    return ret;
+}
+
+HRESULT hantek_close_device(struct hantek_device **pdev)
+{
+    HRESULT ret = H_OK;
+
+    struct hantek_device *hdev = NULL;
+
+    if (NULL == pdev || NULL == *pdev) {
+        DEBUG("Bad arguments");
+        ret = H_ERR_BAD_ARGS;
+        goto done;
+    }
+
+    hdev = *pdev;
+
+    if (NULL != hdev->hdl) {
+        libusb_close(hdev->hdl);
+        hdev->hdl = NULL;
+    }
+
+    if (NULL != hdev->dev) {
+        libusb_unref_device(hdev->dev);
+        hdev->dev = NULL;
+    }
+
+done:
     return ret;
 }
 

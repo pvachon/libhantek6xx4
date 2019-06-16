@@ -21,4 +21,12 @@ typedef int32_t HRESULT;
 #define H_ERR_CONTROL_FAIL          H_ERR(H_SUB_LIBUSB, 2)
 #define H_ERR_CANT_OPEN             H_ERR(H_SUB_LIBUSB, 3)
 
+/**
+ * Open a Hantek 6000B device.
+ */
 HRESULT hantek_open_device(struct hantek_device **pdev);
+
+/**
+ * Close an open Hantek 6000B device.
+ */
+HRESULT hantek_close_device(struct hantek_device **pdev);
