@@ -18,10 +18,52 @@
 
 #define HASSERT_ARG(x) do { if (!((x))) { DEBUG("Bad Argument"); return H_ERR_BAD_ARGS; } } while (0)
 
+#define HT_MAX_CHANNELS     4
+
+struct hantek_channel {
+    /**
+     * Whether or not this channel is enabled
+     */
+    bool enabled;
+
+    /**
+     * Whether or not front-end bandwidth limiting is enabled
+     */
+    bool bw_limit;
+
+    /**
+     * Volts per division for this channel
+     */
+    enum hantek_volts_per_div vpd;
+
+    /**
+     * Coupling mode (AC or DC coupling)
+     */
+    enum hantek_coupling coupling;
+};
+
 struct hantek_device {
     struct libusb_device *dev;
     struct libusb_device_handle *hdl;
+
+    /**
+     * FPGA version, read back after reset
+     */
     uint16_t fpga_version;
+
+    /**
+     * Configuration per channel
+     */
+    struct hantek_channel channels[HT_MAX_CHANNELS];
+
+    /**
+     * ID string read back from the device
+     */
     char id_string[HT_MAX_INFO_STRING_LEN];
+
+    /**
+     * Calibration data for this device
+     */
+    uint16_t cal_data[HT_CALIBRATION_INFO_ENTRIES];
 };
 

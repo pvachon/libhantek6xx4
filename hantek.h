@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stdbool.h>
 
 struct hantek_device;
 
@@ -57,6 +58,26 @@ enum hantek_sample_times {
     HT_ST_500MS = 500000000,
 };
 
+enum hantek_volts_per_div {
+    HT_VPD_2MV = 0,
+    HT_VPD_5MV = 1,
+    HT_VPD_10MV = 2,
+    HT_VPD_20MV = 3,
+    HT_VPD_50MV = 4,
+    HT_VPD_100MV = 5,
+    HT_VPD_200MV = 6,
+    HT_VPD_500MV = 7,
+    HT_VPD_1V = 8,
+    HT_VPD_2V = 9,
+    HT_VPD_5V = 10,
+    HT_VPD_10V = 11,
+};
+
+enum hantek_coupling {
+    HT_COUPLING_DC = 0,
+    HT_COUPLING_AC = 1,
+};
+
 /**
  * Open a Hantek 6000B device.
  */
@@ -71,3 +92,8 @@ HRESULT hantek_close_device(struct hantek_device **pdev);
  * Set the sampling rate for this device. Specified as spacing in ns between samples.
  */
 HRESULT hantek_set_sampling_rate(struct hantek_device *dev, enum hantek_sample_times sample_spacing);
+
+/**
+ * Configure a particular channel's front end.
+ */
+HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned channel_num, enum hantek_volts_per_div volts_per_div, enum hantek_coupling coupling, bool bw_limit);

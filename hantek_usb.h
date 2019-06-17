@@ -49,7 +49,17 @@ DSO...6000....V1
 /**
  * Message IDs, to the best of our guesses
  */
-#define HT_MSG_INITIALIZE                   0x0c
+#define HT_MSG_CONFIGURE_FRONTEND           0x08
 #define HT_MSG_GET_HW_VERSION               0x09
+#define HT_MSG_INITIALIZE                   0x0c
 #define HT_MSG_SET_TIME_DIVISION            0x0f
 
+/**
+ * Channel configuration byte bitshifts
+ */
+#define HT_CHAN_BW_LIMIT_SHIFT              7
+#define HT_CHAN_LT1V_SHIFT                  6
+#define HT_CHAN_GE1V_SHIFT                  5
+#define HT_CHAN_LT100MV_SHIFT               4
+#define HT_CHAN_GE100MV_SHIFT               3
+#define HT_CHAN_COUPLING_SHIFT              2

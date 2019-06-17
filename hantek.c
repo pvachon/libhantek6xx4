@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 static
 HRESULT _hantek_device_find(libusb_device **pdev)
@@ -445,6 +446,17 @@ HRESULT hantek_open_device(struct hantek_device **pdev)
 
     /* TODO: parse out what we need from the ID string */
 
+    /* Grab the calibration data for this device */
+    if (H_FAILED(ret = _hantek_get_calibration_data(hdl, nhdev->cal_data, HT_CALIBRATION_INFO_ENTRIES))) {
+        DEBUG("Failed to get device calibration data, aborting.");
+        goto done;
+    }
+
+#ifdef HT_DEBUG
+    printf("Calibration data:\n");
+    hexdump_dump_hex(nhdev->cal_data, HT_CALIBRATION_INFO_ENTRIES * sizeof(uint16_t));
+#endif
+
     *pdev = nhdev;
 done:
     if (H_FAILED(ret)) {
@@ -485,7 +497,6 @@ HRESULT hantek_close_device(struct hantek_device **pdev)
         hdev->dev = NULL;
     }
 
-done:
     return ret;
 }
 
@@ -510,6 +521,79 @@ HRESULT hantek_set_sampling_rate(struct hantek_device *dev, enum hantek_sample_t
         goto done;
     }
 
+done:
+    return ret;
+}
+
+static
+uint8_t _hantek_channel_setup(enum hantek_volts_per_div volts_per_div, enum hantek_coupling coupling, bool bandwidth_limit)
+{
+    uint8_t state = 0;
+
+    state |= (bandwidth_limit == true) << HT_CHAN_BW_LIMIT_SHIFT;
+    state |= (volts_per_div < HT_VPD_1V) << HT_CHAN_LT1V_SHIFT;
+    state |= (volts_per_div >= HT_VPD_1V) << HT_CHAN_GE1V_SHIFT;
+    state |= (volts_per_div < HT_VPD_100MV) << HT_CHAN_LT100MV_SHIFT;
+    state |= (volts_per_div >= HT_VPD_100MV) << HT_CHAN_GE100MV_SHIFT;
+    state |= (coupling == HT_COUPLING_DC) << HT_CHAN_COUPLING_SHIFT;
+    state |= 1 << 1;
+
+    return state;
+}
+
+HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned channel_num, enum hantek_volts_per_div volts_per_div, enum hantek_coupling coupling, bool bw_limit)
+{
+    HRESULT ret = H_OK;
+
+    uint8_t message[8] = { HT_MSG_CONFIGURE_FRONTEND, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 };
+    struct hantek_channel *this_chan = NULL;
+    size_t transferred = 0;
+
+    HASSERT_ARG(NULL != dev);
+    HASSERT_ARG(channel_num < HT_MAX_CHANNELS);
+
+    this_chan = &dev->channels[channel_num];
+
+    this_chan->vpd = volts_per_div;
+    this_chan->coupling = coupling;
+    this_chan->bw_limit = bw_limit;
+
+    for (size_t i = 0; i < HT_MAX_CHANNELS; i++) {
+        struct hantek_channel *chan = &dev->channels[i];
+        message[2 + i] = _hantek_channel_setup(chan->vpd, chan->coupling, chan->bw_limit);
+    }
+
+    message[6] = 0x1;
+
+    if (H_FAILED(ret = _hantek_bulk_cmd_out(dev->hdl, message, sizeof(message), &transferred))) {
+        DEBUG("Failed to send frontend configuration, aborting.");
+        goto done;
+    }
+
+    if (sizeof(message) != transferred) {
+        DEBUG("Failed to transfer frontend configuration, aborting.");
+        ret = H_ERR_NOT_READY;
+        goto done;
+    }
+
+    transferred = 0;
+
+    /* This is what the SDK does */
+    usleep(2000);
+
+    if (H_FAILED(ret = _hantek_bulk_cmd_out(dev->hdl, message, sizeof(message), &transferred)))  {
+        DEBUG("Failed to send second frontend configuration command, aborting.");
+        goto done;
+    }
+
+    if (sizeof(message) != transferred) {
+        DEBUG("Failed to send second stage of frontend configuration command, aborting.");
+        ret = H_ERR_NOT_READY;
+        goto done;
+    }
+
+    /* This is also what the SDK does */
+    usleep(50000);
 done:
     return ret;
 }
