@@ -78,6 +78,18 @@ enum hantek_coupling {
     HT_COUPLING_AC = 1,
 };
 
+enum hantek_trigger_mode {
+    HT_TRIGGER_EDGE = 0,
+    HT_TRIGGER_PULSE = 1,
+    HT_TRIGGER_VIDEO = 2,
+    HT_TRIGGER_FORCE = 0x80,
+};
+
+enum hantek_trigger_slope {
+    HT_TRIGGER_SLOPE_RISE = 0,
+    HT_TRIGGER_SLOPE_FALL = 1,
+};
+
 /**
  * Open a Hantek 6000B device.
  */
@@ -97,3 +109,8 @@ HRESULT hantek_set_sampling_rate(struct hantek_device *dev, enum hantek_sample_t
  * Configure a particular channel's front end.
  */
 HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned channel_num, enum hantek_volts_per_div volts_per_div, enum hantek_coupling coupling, bool bw_limit);
+
+/**
+ * Configure trigger mode and level
+ */
+HRESULT hantek_configure_trigger(struct hantek_device *dev, unsigned channel_num, enum hantek_trigger_mode mode, enum hantek_trigger_slope slope, enum hantek_coupling coupling, uint8_t level);

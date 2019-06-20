@@ -49,10 +49,12 @@ DSO...6000....V1
 /**
  * Message IDs, to the best of our guesses
  */
-#define HT_MSG_CONFIGURE_FRONTEND           0x08
+#define HT_MSG_SET_TRIGGER_LEVEL            0x07
+#define HT_MSG_CONFIGURE_FRONTEND           0x08 /* This command might route to a shift register or somesuch */
 #define HT_MSG_GET_HW_VERSION               0x09
 #define HT_MSG_INITIALIZE                   0x0c
 #define HT_MSG_SET_TIME_DIVISION            0x0f
+#define HT_MSG_CONFIGURE_TRIGGER            0x11
 
 /**
  * Channel configuration byte bitshifts

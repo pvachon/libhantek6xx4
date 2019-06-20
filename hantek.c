@@ -581,6 +581,8 @@ HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned ch
     /* This is what the SDK does */
     usleep(2000);
 
+    message[7] = 0x1;
+
     if (H_FAILED(ret = _hantek_bulk_cmd_out(dev->hdl, message, sizeof(message), &transferred)))  {
         DEBUG("Failed to send second frontend configuration command, aborting.");
         goto done;
@@ -594,6 +596,47 @@ HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned ch
 
     /* This is also what the SDK does */
     usleep(50000);
+done:
+    return ret;
+}
+
+static
+HRESULT _hantek_set_trigger_mode(libusb_device_handle *hdl, enum hantek_trigger_mode mode, enum hantek_trigger_slope slope, enum hantek_coupling coupling)
+{
+    HRESULT ret = H_OK;
+
+    uint8_t message[6] = { HT_MSG_CONFIGURE_TRIGGER, 0x0 };
+    size_t transferred = 0;
+
+    HASSERT_ARG(NULL != hdl);
+
+    message[2] = (uint8_t)mode;
+    message[3] = (uint8_t)slope;
+    message[4] = (uint8_t)coupling;
+    message[5] = 0x0;
+
+    if (H_FAILED(ret = _hantek_bulk_cmd_out(hdl, message, sizeof(message), &transferred))) {
+        DEBUG("Failed to send set trigger mode command, aborting.");
+        goto done;
+    }
+
+done:
+    return ret;
+}
+
+HRESULT hantek_configure_trigger(struct hantek_device *dev, unsigned channel_num, enum hantek_trigger_mode mode, enum hantek_trigger_slope slope, enum hantek_coupling coupling, uint8_t level)
+{
+    HRESULT ret = H_OK;
+
+    HASSERT_ARG(NULL != dev);
+    HASSERT_ARG(4 > channel_num);
+
+    if (H_FAILED(ret = _hantek_set_trigger_mode(dev->hdl, mode, slope, coupling))) {
+        goto done;
+    }
+
+    /* TODO: set trigger level */
+
 done:
     return ret;
 }
