@@ -47,6 +47,16 @@ struct hantek_device {
     struct libusb_device_handle *hdl;
 
     /**
+     * The PCB revision
+     */
+    int pcb_revision;
+
+    /**
+     * Serial number
+     */
+    uint64_t device_serial;
+
+    /**
      * FPGA version, read back after reset
      */
     uint16_t fpga_version;

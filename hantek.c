@@ -440,6 +440,27 @@ HRESULT hantek_open_device(struct hantek_device **pdev)
         goto done;
     }
 
+    /* Parse out the PCB revision - this is bonkers but the only place we can get it */
+    for (size_t i = 0; i < 5; i++) {
+        int norm = nhdev->id_string[14 + i] - '0';
+
+        if (norm > 9 || norm < 0) {
+            continue;
+        }
+
+        nhdev->pcb_revision *= 10;
+        nhdev->pcb_revision += norm;
+    }
+
+    /* Parse out the device serial number */
+    for (size_t i = 0; i < 8; i++) {
+        nhdev->device_serial *= 10;
+        nhdev->device_serial += nhdev->id_string[20 + i];
+    }
+
+    DEBUG("PCB Revision: %d", nhdev->pcb_revision);
+    DEBUG("    Serial Number: %lu", nhdev->device_serial);
+
 #ifdef HT_DEBUG
     hexdump_dump_hex(nhdev->id_string, HT_MAX_INFO_STRING_LEN);
 #endif
