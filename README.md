@@ -1,6 +1,6 @@
-# `libhantek6000`: Open Source Hantek 6000-series USB Scope Support
+# `libhantek6xx4`: Open Source Hantek 6xx4-series USB Oscilloscope Support
 
-This library is intended to provide an abstraction on top of the Hantek 6000 series oscilloscopes, using `libusb-1.0`.
+This library is intended to provide an abstraction on top of the Hantek 6xx4 series oscilloscopes, using `libusb-1.0`.
 
 ## Dependencies
 You'll need to install the following:

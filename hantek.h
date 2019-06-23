@@ -91,12 +91,12 @@ enum hantek_trigger_slope {
 };
 
 /**
- * Open a Hantek 6000B device.
+ * Open a Hantek 6xx4 device.
  */
 HRESULT hantek_open_device(struct hantek_device **pdev);
 
 /**
- * Close an open Hantek 6000B device.
+ * Close an open Hantek 6xx4 device.
  */
 HRESULT hantek_close_device(struct hantek_device **pdev);
 
@@ -113,4 +113,4 @@ HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned ch
 /**
  * Configure trigger mode and level
  */
-HRESULT hantek_configure_trigger(struct hantek_device *dev, unsigned channel_num, enum hantek_trigger_mode mode, enum hantek_trigger_slope slope, enum hantek_coupling coupling, uint8_t level);
+HRESULT hantek_configure_trigger(struct hantek_device *dev, unsigned channel_num, enum hantek_trigger_mode mode, enum hantek_trigger_slope slope, enum hantek_coupling coupling, uint8_t trig_vertical_level, uint32_t trig_horiz_offset);
