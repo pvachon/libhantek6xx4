@@ -24,11 +24,9 @@ typedef int32_t HRESULT;
 #define H_ERR_CANT_OPEN             H_ERR(H_SUB_LIBUSB, 3)
 
 /**
- * Supported sample spacing times, in nanseconds.
- *
- * To calculate the sampling frequency, invert this value (in seconds).
+ * Supported time-per-dvision (for the virtical graticule)
  */
-enum hantek_sample_times {
+enum hantek_time_per_division {
     HT_ST_1NS = 1,
     HT_ST_2NS = 2,
     HT_ST_5NS = 5,
@@ -93,7 +91,7 @@ enum hantek_trigger_slope {
 /**
  * Open a Hantek 6xx4 device.
  */
-HRESULT hantek_open_device(struct hantek_device **pdev);
+HRESULT hantek_open_device(struct hantek_device **pdev, uint32_t capture_buffer_len);
 
 /**
  * Close an open Hantek 6xx4 device.
@@ -103,7 +101,7 @@ HRESULT hantek_close_device(struct hantek_device **pdev);
 /**
  * Set the sampling rate for this device. Specified as spacing in ns between samples.
  */
-HRESULT hantek_set_sampling_rate(struct hantek_device *dev, enum hantek_sample_times sample_spacing);
+HRESULT hantek_set_sampling_rate(struct hantek_device *dev, enum hantek_time_per_division sample_spacing);
 
 /**
  * Configure a particular channel's front end.

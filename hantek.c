@@ -378,7 +378,7 @@ done:
     return ret;
 }
 
-HRESULT hantek_open_device(struct hantek_device **pdev)
+HRESULT hantek_open_device(struct hantek_device **pdev, uint32_t capture_buffer_len)
 {
     HRESULT ret = H_OK;
 
@@ -388,6 +388,7 @@ HRESULT hantek_open_device(struct hantek_device **pdev)
     int uret = -1;
 
     HASSERT_ARG(NULL != pdev);
+    HASSERT_ARG(0 < capture_buffer_len && (1 << 16) >= capture_buffer_len);
 
     *pdev = NULL;
 
@@ -417,6 +418,7 @@ HRESULT hantek_open_device(struct hantek_device **pdev)
 
     nhdev->dev = dev;
     nhdev->hdl = hdl;
+    nhdev->capture_buffer_len = capture_buffer_len;
 
     /* Send what looks to be a reset command */
     if (H_FAILED(ret = _hantek_device_reset(hdl))) {
@@ -453,19 +455,15 @@ HRESULT hantek_open_device(struct hantek_device **pdev)
     }
 
     /* Parse out the device serial number */
-    for (size_t i = 0; i < 8; i++) {
-        nhdev->device_serial *= 10;
-        nhdev->device_serial += nhdev->id_string[20 + i];
-    }
+    memcpy(nhdev->serial_number, &nhdev->id_string[20], 8);
+    nhdev->serial_number[8] = '\0';
 
     DEBUG("PCB Revision: %d", nhdev->pcb_revision);
-    DEBUG("    Serial Number: %lu", nhdev->device_serial);
+    DEBUG("    Serial Number: %s", nhdev->serial_number);
 
 #ifdef HT_DEBUG
     hexdump_dump_hex(nhdev->id_string, HT_MAX_INFO_STRING_LEN);
 #endif
-
-    /* TODO: parse out what we need from the ID string */
 
     /* Grab the calibration data for this device */
     if (H_FAILED(ret = _hantek_get_calibration_data(hdl, nhdev->cal_data, HT_CALIBRATION_INFO_ENTRIES))) {
@@ -521,7 +519,7 @@ HRESULT hantek_close_device(struct hantek_device **pdev)
     return ret;
 }
 
-HRESULT hantek_set_sampling_rate(struct hantek_device *dev, enum hantek_sample_times sample_spacing)
+HRESULT hantek_set_sampling_rate(struct hantek_device *dev, enum hantek_time_per_division sample_spacing)
 {
     HRESULT ret = H_OK;
 
@@ -645,18 +643,108 @@ done:
     return ret;
 }
 
+static
+HRESULT _hantek_set_trigger_level(struct hantek_device *dev, uint8_t trig_vertical_level, uint8_t slop)
+{
+    HRESULT ret = H_OK;
+
+    uint8_t message[26] = { HT_MSG_SET_TRIGGER_LEVEL, 0x0 };
+    int32_t pos = 0,
+            round = 0,
+            high = 0,
+            low = 0;
+    size_t transferred = 0;
+
+    HASSERT_ARG(NULL != dev);
+
+    /* Convert to Q22.10 */
+    pos = (200 * trig_vertical_level * 1024)/256;
+
+    if ((pos & 0x3ff) != 0) {
+        round = 1;
+    }
+
+    pos /= 1024;
+    pos += round;
+
+    /* Calculate threshold */
+    high = pos + slop;
+    low = pos - slop;
+
+    if (high < 0) high = 0;
+    if (high > HT_TRIGGER_MAX_VALUE) high = HT_TRIGGER_MAX_VALUE;
+    if (low < 0) low = 0;
+    if (low > high || low > HT_TRIGGER_MAX_VALUE) low = 0x40; /* This is what Hantek does, probably is busted */
+
+    /* Fill in the message */
+    message[2] = high;
+    message[3] = high;
+    message[4] = low;
+    message[5] = low;
+    message[6] = high;
+    message[8] = low;
+    message[9] = low;
+    message[10] = high;
+    message[11] = high;
+    message[12] = low;
+    message[13] = low;
+    message[14] = high;
+    message[15] = high;
+    message[16] = low;
+    message[17] = low;
+
+    message[18] = pos;
+    message[19] = pos;
+    message[20] = pos;
+    message[21] = pos;
+    message[22] = pos;
+    message[23] = pos;
+    message[24] = pos;
+    message[25] = pos;
+
+    if (H_FAILED(ret = _hantek_bulk_cmd_out(dev->hdl, message, sizeof(message), &transferred))) {
+        DEBUG("Failed to send set trigger level message, aborting.");
+        goto done;
+    }
+
+done:
+    return ret;
+}
+
+static
+HRESULT _hantek_set_trigger_horizontal_offset(struct hantek_device *dev, uint32_t trig_horiz_offset, uint32_t slop)
+{
+    HRESULT ret = H_OK;
+
+    uint8_t message[14] = { HT_MSG_SET_TRIG_HORIZ_POS, 0x0 };
+
+    HASSERT_ARG(NULL != dev);
+
+done:
+    return ret;
+}
+
 HRESULT hantek_configure_trigger(struct hantek_device *dev, unsigned channel_num, enum hantek_trigger_mode mode, enum hantek_trigger_slope slope, enum hantek_coupling coupling, uint8_t trig_vertical_level, uint32_t trig_horiz_offset)
 {
     HRESULT ret = H_OK;
 
     HASSERT_ARG(NULL != dev);
     HASSERT_ARG(4 > channel_num);
+    HASSERT_ARG(trig_horiz_offset <= 100);
 
     if (H_FAILED(ret = _hantek_set_trigger_mode(dev->hdl, mode, slope, coupling))) {
         goto done;
     }
 
-    /* TODO: set trigger level */
+    /* Set trigger voltage level */
+    if (H_FAILED(ret = _hantek_set_trigger_level(dev, trig_vertical_level, 4))) {
+        goto done;
+    }
+
+    /* Set trigger horizontal offset, with hard-coded slop for now */
+    if (H_FAILED(ret = _hantek_set_trigger_horizontal_offset(dev, trig_horiz_offset, 4))) {
+        goto done;
+    }
 
 done:
     return ret;

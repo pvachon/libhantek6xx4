@@ -5,9 +5,11 @@
 #include <libusb.h>
 #include <stdint.h>
 
-#define HANTEK_VID          0x04b5
+#define HANTEK_VID              0x04b5
 
-#define HANTEK_PID_6254BD   0x6cde
+#define HANTEK_PID_6254BD       0x6cde
+
+#define HT_SERIAL_NUMBER_LEN    8
 
 #ifdef HT_DEBUG
 #include  <stdio.h>
@@ -54,7 +56,10 @@ struct hantek_device {
     /**
      * Serial number
      */
-    uint64_t device_serial;
+    char serial_number[HT_SERIAL_NUMBER_LEN + 1];
+
+    /* Length of the capture buffer, in bytes */
+    size_t capture_buffer_len;
 
     /**
      * FPGA version, read back after reset

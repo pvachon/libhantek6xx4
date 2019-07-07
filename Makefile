@@ -1,5 +1,6 @@
 OBJ=hantek.o \
 	hantek_main.o \
+	hantek_flash.o \
 	hantek_hexdump.o
 
 TARGET=hantek
