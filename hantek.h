@@ -109,7 +109,7 @@ HRESULT hantek_set_sampling_rate(struct hantek_device *dev, enum hantek_time_per
 /**
  * Configure a particular channel's front end parameters.
  */
-HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned channel_num, enum hantek_volts_per_div volts_per_div, enum hantek_coupling coupling, bool bw_limit);
+HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned channel_num, enum hantek_volts_per_div volts_per_div, enum hantek_coupling coupling, bool bw_limit, bool enable);
 
 /**
  * Configure trigger mode and level

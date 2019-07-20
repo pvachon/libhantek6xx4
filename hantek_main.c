@@ -80,9 +80,16 @@ int main(int argc, char * const *argv)
         goto done;
     }
 
-    if (H_FAILED(hantek_set_sampling_rate(dev, HT_ST_500NS))) {
+    if (H_FAILED(hantek_set_sampling_rate(dev, HT_ST_500US))) {
         printf("Failed to set sampling rate, aborting.\n");
         goto done;
+    }
+
+    for (size_t i = 0; i < 4; i++) {
+        if (H_FAILED(hantek_configure_channel_frontend(dev, i, HT_VPD_1V, HT_COUPLING_AC, false, true))) {
+            printf("Failed to set up channel %zu\n", i);
+            goto done;
+        }
     }
 
     if (H_FAILED(hantek_configure_adc_range_scaling(dev))) {
@@ -90,11 +97,9 @@ int main(int argc, char * const *argv)
         goto done;
     }
 
-    for (size_t i = 0; i < 4; i++) {
-        if (H_FAILED(hantek_configure_channel_frontend(dev, i, HT_VPD_1V, HT_COUPLING_AC, false))) {
-            printf("Failed to set up channel %zu\n", i);
-            goto done;
-        }
+    if (H_FAILED(hantek_configure_adc_routing(dev))) {
+        printf("Failed to set up ADC routing, aborting.\n");
+        goto done;
     }
 
     if (H_FAILED(hantek_get_status(dev, NULL))) {

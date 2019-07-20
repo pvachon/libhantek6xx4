@@ -693,7 +693,7 @@ HRESULT _hantek_hmcad1511_set_channel_count(struct hantek_device *dev, size_t nr
             chan_mask  = 0;
 
     HASSERT_ARG(NULL != dev);
-    HASSERT_ARG(0 != nr_chans && 4 > nr_chans);
+    HASSERT_ARG(0 != nr_chans && 5 > nr_chans);
 
     /* Power down the front-end */
     if (H_FAILED(ret = _hantek_hmcad1511_write_reg(dev, HMCAD1511_REG_SLEEP_PD, HMCAD1511_REG_SLEEP_PD_PD))) {
@@ -722,7 +722,6 @@ HRESULT _hantek_hmcad1511_set_channel_count(struct hantek_device *dev, size_t nr
         goto done;
     }
 
-
     if (H_FAILED(ret = _hantek_hmcad1511_write_reg(dev, HMCAD1511_REG_CHAN_NUM_CLK_DIV, (clk_div << 8) | chan_mask))) {
         goto done;
     }
@@ -745,11 +744,45 @@ HRESULT _hantek_hmcad1511_set_channel_mappings(struct hantek_device *dev, size_t
 {
     HRESULT ret = H_OK;
 
+    uint16_t chan_map[HT_MAX_CHANNELS] = { 0x1, 0x2, 0x4, 0x8 };
+    size_t chan_id = 0;
+
     HASSERT_ARG(NULL != dev);
-    HASSERT_ARG(0 != nr_chans && 4 > nr_chans);
+    HASSERT_ARG(0 != nr_chans && 5 > nr_chans);
 
+    for (size_t i = 0; i < HT_MAX_CHANNELS && chan_id < HT_MAX_CHANNELS; i++) {
+        if (true == dev->channels[i].enabled) {
+            switch (nr_chans) {
+            case 1:
+                /* One channel maps to all ADC channels (since the HMCAD1511 interleaves the ADCs) */
+                chan_map[0] = chan_map[1] = chan_map[2] = chan_map[3] = 1 << i;
+                chan_id = 4;
+                break;
+            case 2:
+                /* A pair of channels (high or low) maps to an ADC channel */
+                chan_map[chan_id] = chan_map[chan_id + 1] = 1 << i;
+                chan_id += 2;
+                break;
+            case 3:
+            case 4:
+                chan_map[i] = 1 << i;
+                break;
+            }
+        }
+    }
 
+    /* Write out the two input select registers */
+    if (H_FAILED(ret = _hantek_hmcad1511_write_reg(dev, HMCAD1511_REG_INP_SEL_CH_LO, chan_map[0] | (chan_map[1] << 8)))) {
+        DEBUG("Failed to write out channel map for LO registers");
+        goto done;
+    }
 
+    if (H_FAILED(ret = _hantek_hmcad1511_write_reg(dev, HMCAD1511_REG_INP_SEL_CH_HI, chan_map[2] | (chan_map[3] << 8)))) {
+        DEBUG("Failed to write out channel map for HI registers");
+        goto done;
+    }
+
+done:
     return ret;
 }
 
@@ -763,7 +796,7 @@ HRESULT _hantek_hmcad1511_set_coarse_gains(struct hantek_device *dev, size_t nr_
              ch_id = 0;
 
     HASSERT_ARG(NULL != dev);
-    HASSERT_ARG(0 != nr_chans && 4 > nr_chans);
+    HASSERT_ARG(0 != nr_chans && 5 > nr_chans);
 
     switch (nr_chans) {
     case 1:
@@ -908,7 +941,7 @@ uint8_t _hantek_channel_setup(enum hantek_volts_per_div volts_per_div, enum hant
     return state;
 }
 
-HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned channel_num, enum hantek_volts_per_div volts_per_div, enum hantek_coupling coupling, bool bw_limit)
+HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned channel_num, enum hantek_volts_per_div volts_per_div, enum hantek_coupling coupling, bool bw_limit, bool enable)
 {
     HRESULT ret = H_OK;
 
@@ -924,6 +957,7 @@ HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned ch
     this_chan->vpd = volts_per_div;
     this_chan->coupling = coupling;
     this_chan->bw_limit = bw_limit;
+    this_chan->enabled = enable;
 
     /* Fill in the settings for each channel */
     message[6] = 0x1;
