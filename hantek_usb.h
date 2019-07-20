@@ -25,7 +25,12 @@
 #define HT_VALUE_GET_INFO_STRING			0x1580
 #define HT_VALUE_GET_CALIBRATION_DAT        0x1600
 #define HT_MAX_INFO_STRING_LEN              0x47
-#define HT_CALIBRATION_INFO_ENTRIES         576
+#define HT_CALIBRATION_INFO_ENTRIES         (((12 * 12) * 4) + 1)
+
+/**
+ * Magic flag used to indicate calibration data is valid
+ */
+#define HT_CALIBRATION_NONZERO_FLAG         0xfbcf
 
 /**
  * Requests related to the Flash
@@ -42,6 +47,7 @@
 /**
  * Message IDs, to the best of our guesses
  */
+#define HT_MSG_GET_STATUS                   0x06
 #define HT_MSG_SET_TRIGGER_LEVEL            0x07
 #define HT_MSG_CONFIGURE_FRONTEND           0x08 /* This command might route to a shift register or somesuch */
 #define HT_MSG_GET_HW_VERSION               0x09
@@ -64,3 +70,11 @@
  * Trigger level magic numbers
  */
 #define HT_TRIGGER_MAX_VALUE                0xe4
+
+/**
+ * Status bit values
+ */
+#define HT_STATUS_TRIGGERED_READY           (1 << 1)
+#define HT_STATUS_PACK_STATE                (1 << 3)
+#define HT_STATUS_SDRAM_INIT                (1 << 4)
+

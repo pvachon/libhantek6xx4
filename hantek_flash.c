@@ -35,3 +35,4 @@ HRESULT hantek_read_bitstream_flash(struct hantek_device *dev, uint8_t *target_b
 done:
     return ret;
 }
+

@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdlib.h>
 
 struct hantek_device;
 
@@ -18,10 +19,12 @@ typedef int32_t HRESULT;
 #define H_ERR_NOT_READY             H_ERR(H_SUB_NONE, 2)
 #define H_ERR_NO_MEM                H_ERR(H_SUB_NONE, 3)
 #define H_ERR_BAD_SAMPLE_RATE       H_ERR(H_SUB_NONE, 4)
+#define H_ERR_INVAL_CHANNELS        H_ERR(H_SUB_NONE, 5)
 
 #define H_ERR_NOT_FOUND             H_ERR(H_SUB_LIBUSB, 1)
 #define H_ERR_CONTROL_FAIL          H_ERR(H_SUB_LIBUSB, 2)
 #define H_ERR_CANT_OPEN             H_ERR(H_SUB_LIBUSB, 3)
+
 
 /**
  * Supported time-per-dvision (for the virtical graticule)
@@ -104,7 +107,7 @@ HRESULT hantek_close_device(struct hantek_device **pdev);
 HRESULT hantek_set_sampling_rate(struct hantek_device *dev, enum hantek_time_per_division sample_spacing);
 
 /**
- * Configure a particular channel's front end.
+ * Configure a particular channel's front end parameters.
  */
 HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned channel_num, enum hantek_volts_per_div volts_per_div, enum hantek_coupling coupling, bool bw_limit);
 
@@ -112,3 +115,13 @@ HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned ch
  * Configure trigger mode and level
  */
 HRESULT hantek_configure_trigger(struct hantek_device *dev, unsigned channel_num, enum hantek_trigger_mode mode, enum hantek_trigger_slope slope, enum hantek_coupling coupling, uint8_t trig_vertical_level, uint32_t trig_horiz_offset);
+
+/**
+ * Configure the ADC maximum number of channels
+ */
+HRESULT hantek_configure_adc_max_chans(struct hantek_device *dev, size_t max_nr_chans);
+
+/**
+ * Get status data from the oscilloscope
+ */
+HRESULT hantek_get_status(struct hantek_device *dev, bool *ptrigger_ready);

@@ -82,6 +82,12 @@ int main(int argc, char * const *argv)
 
     if (H_FAILED(hantek_set_sampling_rate(dev, HT_ST_500NS))) {
         printf("Failed to set sampling rate, aborting.\n");
+        goto done;
+    }
+
+    if (H_FAILED(hantek_configure_adc_max_chans(dev, 1))) {
+        printf("Failed to set ADC front-end max channels, aborting.\n");
+        goto done;
     }
 
     for (size_t i = 0; i < 4; i++) {
@@ -89,6 +95,11 @@ int main(int argc, char * const *argv)
             printf("Failed to set up channel %zu\n", i);
             goto done;
         }
+    }
+
+    if (H_FAILED(hantek_get_status(dev, NULL))) {
+        printf("Failed to get status, aborting.\n");
+        goto done;
     }
 
     if (true == dump_bitstream_flash) {

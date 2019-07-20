@@ -210,6 +210,44 @@ done:
 }
 
 static
+HRESULT _hantek_bulk_read_in(libusb_device_handle *hdl, uint8_t *dst_buf, size_t dst_len)
+{
+    HRESULT ret = H_OK;
+
+    size_t transferred = 0,
+           to_transfer = 0x40;
+    bool ready = false;
+    uint8_t rx_buf[512];
+
+    HASSERT_ARG(NULL != hdl);
+    HASSERT_ARG(NULL != dst_buf);
+    HASSERT_ARG(0 != dst_len);
+
+    if (H_FAILED(ret = _hantek_check_ready(hdl, &ready))) {
+        goto done;
+    }
+
+    if (true == ready) {
+        to_transfer = 512;
+    }
+
+    if (H_FAILED(ret = _hantek_bulk_in(hdl, rx_buf, to_transfer, &transferred))) {
+        DEBUG("Failure to do bulk read, aborting.");
+        goto done;
+    }
+
+    if (transferred != to_transfer) {
+        DEBUG("Expected to receive %zu, got %zu, aborting.", to_transfer, transferred);
+        goto done;
+    }
+
+    memcpy(dst_buf, rx_buf, dst_len);
+
+done:
+    return ret;
+}
+
+static
 HRESULT _hantek_read_config_attrs(libusb_device_handle *hdl, uint16_t value, void *dst, size_t len_bytes)
 {
     HRESULT ret = H_OK;
@@ -288,6 +326,7 @@ HRESULT _hantek_wake_device(libusb_device_handle *hdl)
 {
     HRESULT ret = H_OK;
 
+    /* This is some magic to reset some of the front-end components */
     static
     uint8_t wake_cmds[5][8] = {
         { 0x08, 0x00, 0x00, 0x77, 0x47, 0x12, 0x04, 0x00 },
@@ -367,10 +406,16 @@ HRESULT _hantek_get_calibration_data(libusb_device_handle *hdl, uint16_t *cal_da
 
     HASSERT_ARG(NULL != hdl);
     HASSERT_ARG(NULL != cal_data);
-    HASSERT_ARG(0 != nr_cal_vals);
+    HASSERT_ARG(HT_CALIBRATION_INFO_ENTRIES == nr_cal_vals);
 
     if (H_FAILED(ret = _hantek_read_config_attrs(hdl, HT_VALUE_GET_CALIBRATION_DAT, cal_data, sizeof(uint16_t) * nr_cal_vals))) {
         DEBUG("Failed to read back calibration values, aborting.");
+        goto done;
+    }
+
+    if (HT_CALIBRATION_NONZERO_FLAG != cal_data[nr_cal_vals - 1]) {
+        DEBUG("!!! Calibration data is not set. Flag: %04x.", (unsigned)cal_data[nr_cal_vals - 1]);
+        ret = H_ERR_NOT_READY;
         goto done;
     }
 
@@ -519,6 +564,44 @@ HRESULT hantek_close_device(struct hantek_device **pdev)
     return ret;
 }
 
+HRESULT hantek_get_status(struct hantek_device *dev, bool *ptrigger_ready)
+{
+    HRESULT ret =  H_OK;
+
+    uint8_t message[2] = { HT_MSG_GET_STATUS, 0x0 };
+    uint8_t status = 0;
+    size_t transferred = 0;
+
+    HASSERT_ARG(NULL != dev);
+
+    if (H_FAILED(_hantek_bulk_cmd_out(dev->hdl, message, sizeof(message), &transferred))) {
+        DEBUG("Failed to send status message, aborting.");
+        ret = H_ERR_NOT_READY;
+        goto done;
+    }
+
+    if (sizeof(message) != transferred) {
+        DEBUG("Sent less data than expected");
+        ret = H_ERR_NOT_READY;
+        goto done;
+    }
+
+    if (H_FAILED(_hantek_bulk_read_in(dev->hdl, &status, 1))) {
+        DEBUG("Failed ot read back status, aborting.");
+        ret = H_ERR_NOT_READY;
+        goto done;
+    }
+
+    DEBUG("*** STATUS BYTE: 0x%02x ***", status);
+
+    if (NULL != ptrigger_ready) {
+        *ptrigger_ready = !!(status & HT_STATUS_TRIGGERED_READY);
+    }
+
+done:
+    return ret;
+}
+
 HRESULT hantek_set_sampling_rate(struct hantek_device *dev, enum hantek_time_per_division sample_spacing)
 {
     HRESULT ret = H_OK;
@@ -537,6 +620,41 @@ HRESULT hantek_set_sampling_rate(struct hantek_device *dev, enum hantek_time_per
     if (H_FAILED(ret = _hantek_bulk_cmd_out(dev->hdl, message, sizeof(message), &transferred))) {
         DEBUG("Failed to set sampling rate.");
         ret = H_ERR_BAD_SAMPLE_RATE;
+        goto done;
+    }
+
+done:
+    return ret;
+}
+
+HRESULT hantek_configure_adc_max_chans(struct hantek_device *dev, size_t max_nr_chans)
+{
+    HRESULT ret = H_OK;
+
+    uint8_t message[8] = { HT_MSG_CONFIGURE_FRONTEND, 0x00, 0x00, 0x00, 0x00, 0x55, 0x04, 0x00 };
+    size_t transferred = 0;
+
+    HASSERT_ARG(NULL != dev);
+
+    switch (max_nr_chans) {
+    case 1:
+        message[3] = dev->pcb_revision == 105 ? 0 : 25;
+        break;
+    case 2:
+        message[3] = dev->pcb_revision == 105 ? 10 : 48;
+        break;
+    case 4:
+        message[3] = dev->pcb_revision == 105 ? 55 : 63;
+        break;
+    default:
+        DEBUG("Invalid channel count: %zu", max_nr_chans);
+        ret = H_ERR_INVAL_CHANNELS;
+        goto done;
+    }
+
+    if (H_FAILED(ret = _hantek_bulk_cmd_out(dev->hdl, message, sizeof(message), &transferred))) {
+        DEBUG("Failed to set sampling rate.");
+        ret = H_ERR_INVAL_CHANNELS;
         goto done;
     }
 
@@ -717,8 +835,16 @@ HRESULT _hantek_set_trigger_horizontal_offset(struct hantek_device *dev, uint32_
     HRESULT ret = H_OK;
 
     uint8_t message[14] = { HT_MSG_SET_TRIG_HORIZ_POS, 0x0 };
+    size_t transferred = 0;
 
     HASSERT_ARG(NULL != dev);
+
+    
+
+    if (H_FAILED(ret = _hantek_bulk_cmd_out(dev->hdl, message, sizeof(message), &transferred))) {
+        DEBUG("Failed to set horizontal offset, aborting.");
+        goto done;
+    }
 
 done:
     return ret;
