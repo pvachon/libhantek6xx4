@@ -49,7 +49,11 @@
  */
 #define HT_MSG_GET_STATUS                   0x06
 #define HT_MSG_SET_TRIGGER_LEVEL            0x07
-#define HT_MSG_CONFIGURE_FRONTEND           0x08 /* This command might route to a shift register or somesuch */
+
+/**
+ * Send up to 32 bits of data across the device's SPI bus
+ */
+#define HT_MSG_SEND_SPI                     0x08
 #define HT_MSG_GET_HW_VERSION               0x09
 #define HT_MSG_INITIALIZE                   0x0c
 #define HT_MSG_SET_TIME_DIVISION            0x0f
@@ -74,7 +78,27 @@
 /**
  * Status bit values
  */
-#define HT_STATUS_TRIGGERED_READY           (1 << 1)
+#define HT_STATUS_TRIGGERED                 (1 << 0)
+#define HT_STATUS_DATA_READY                (1 << 1)
 #define HT_STATUS_PACK_STATE                (1 << 3)
 #define HT_STATUS_SDRAM_INIT                (1 << 4)
+
+/**
+ * SPI Chip Selects
+ */
+
+/**
+ * Shift registers for front-end control
+ */
+#define HT_SPI_CS_SHIFT_REG                 0x1
+
+/**
+ * ADF4360-2 Control Latches
+ */
+#define HT_SPI_CS_ADF4360                   0x2
+
+/**
+ * HMCAD1511 Control Registers
+ */
+#define HT_SPI_CS_HMCAD1511                 0x4
 

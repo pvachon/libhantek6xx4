@@ -117,11 +117,16 @@ HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned ch
 HRESULT hantek_configure_trigger(struct hantek_device *dev, unsigned channel_num, enum hantek_trigger_mode mode, enum hantek_trigger_slope slope, enum hantek_coupling coupling, uint8_t trig_vertical_level, uint32_t trig_horiz_offset);
 
 /**
- * Configure the ADC maximum number of channels
+ * Configure the range of the ADC, dependent on the number of channels enabled
  */
-HRESULT hantek_configure_adc_max_chans(struct hantek_device *dev, size_t max_nr_chans);
+HRESULT hantek_configure_adc_range_scaling(struct hantek_device *dev);
 
 /**
- * Get status data from the oscilloscope
+ * Get status from the oscilloscope
  */
-HRESULT hantek_get_status(struct hantek_device *dev, bool *ptrigger_ready);
+HRESULT hantek_get_status(struct hantek_device *dev, bool *pdata_ready);
+
+/**
+ * Configure the ADC's routing, based on the current channel setup
+ */
+HRESULT hantek_configure_adc_routing(struct hantek_device *dev);

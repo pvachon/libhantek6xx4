@@ -10,6 +10,28 @@
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <assert.h>
+
+#include <hmcad1511.h>
+
+/**
+ * Table mapping volts/division to ADC coarse gain values for the HMCAD1511
+ */
+static
+uint8_t _hantek_vpd_gain_mapping[12] = {
+    0xd,
+    0xa,
+    0x7,
+    0x5,
+    0x2,
+    0x0,
+    0x5,
+    0x2,
+    0x0,
+    0x5,
+    0x2,
+    0x0,
+};
 
 static
 HRESULT _hantek_device_find(libusb_device **pdev)
@@ -74,7 +96,7 @@ done:
 }
 
 static
-HRESULT _hantek_check_ready(libusb_device_handle *dev, bool *pready)
+HRESULT _hantek_check_usb_1(libusb_device_handle *dev, bool *pready)
 {
 	HRESULT ret = H_OK;
 
@@ -144,14 +166,14 @@ HRESULT _hantek_bulk_cmd_out(libusb_device_handle *dev, uint8_t *data, size_t le
         goto done;
     }
 
-    /* Check if the device is ready (I think) */
-    if (H_FAILED(ret = _hantek_check_ready(dev, &ready))) {
-        DEBUG("Was unable to check if ready, aborting.");
+    /* Check if the device is in USB 1 mode */
+    if (H_FAILED(ret = _hantek_check_usb_1(dev, &ready))) {
+        DEBUG("Was unable to check if in USB 1 mode, aborting.");
         goto done;
     }
 
     if (false == ready) {
-        DEBUG("Device is not ready, aborting.");
+        DEBUG("Device is not in USB 2.0 mode");
         ret = H_ERR_CONTROL_FAIL;
         goto done;
     }
@@ -216,18 +238,20 @@ HRESULT _hantek_bulk_read_in(libusb_device_handle *hdl, uint8_t *dst_buf, size_t
 
     size_t transferred = 0,
            to_transfer = 0x40;
-    bool ready = false;
+    bool usb2 = false;
     uint8_t rx_buf[512];
 
     HASSERT_ARG(NULL != hdl);
     HASSERT_ARG(NULL != dst_buf);
     HASSERT_ARG(0 != dst_len);
 
-    if (H_FAILED(ret = _hantek_check_ready(hdl, &ready))) {
+    if (H_FAILED(ret = _hantek_check_usb_1(hdl, &usb2))) {
+        DEBUG("Failed to check if device is in USB 1.0 mode");
         goto done;
     }
 
-    if (true == ready) {
+    if (true == usb2) {
+        /* You transfers are 512 bytes at a time in USB 2.0 */
         to_transfer = 512;
     }
 
@@ -326,14 +350,13 @@ HRESULT _hantek_wake_device(libusb_device_handle *hdl)
 {
     HRESULT ret = H_OK;
 
-    /* This is some magic to reset some of the front-end components */
     static
     uint8_t wake_cmds[5][8] = {
-        { 0x08, 0x00, 0x00, 0x77, 0x47, 0x12, 0x04, 0x00 },
-        { 0x08, 0x00, 0x00, 0x03, 0x00, 0x33, 0x04, 0x00 },
-        { 0x08, 0x00, 0x00, 0x65, 0x00, 0x30, 0x02, 0x00 },
-        { 0x08, 0x00, 0x00, 0x28, 0xF1, 0x0F, 0x02, 0x00 },
-        { 0x08, 0x00, 0x00, 0x12, 0x38, 0x01, 0x02, 0x00 }
+        { HT_MSG_SEND_SPI, 0x00, 0x00, 0x77, 0x47, HMCAD1511_REG_LVDS_TERM,     HT_SPI_CS_HMCAD1511, 0x00 },
+        { HT_MSG_SEND_SPI, 0x00, 0x00, 0x03, 0x00, HMCAD1511_REG_GAIN_CONTROL,  HT_SPI_CS_HMCAD1511, 0x00 },
+        { HT_MSG_SEND_SPI, 0x00, 0x00, 0x65, 0x00, 0x30, HT_SPI_CS_ADF4360, 0x00 },
+        { HT_MSG_SEND_SPI, 0x00, 0x00, 0x28, 0xF1, 0x0F, HT_SPI_CS_ADF4360, 0x00 },
+        { HT_MSG_SEND_SPI, 0x00, 0x00, 0x12, 0x38, 0x01, HT_SPI_CS_ADF4360, 0x00 }
     };
 
     HASSERT_ARG(NULL != hdl);
@@ -371,7 +394,7 @@ HRESULT _hantek_get_fpga_version(libusb_device_handle *hdl, uint16_t *pfpga_ver)
 
     *pfpga_ver = 0;
 
-    if (H_FAILED(ret = _hantek_check_ready(hdl, &ready))) {
+    if (H_FAILED(ret = _hantek_check_usb_1(hdl, &ready))) {
         goto done;
     }
 
@@ -564,7 +587,7 @@ HRESULT hantek_close_device(struct hantek_device **pdev)
     return ret;
 }
 
-HRESULT hantek_get_status(struct hantek_device *dev, bool *ptrigger_ready)
+HRESULT hantek_get_status(struct hantek_device *dev, bool *pdata_ready)
 {
     HRESULT ret =  H_OK;
 
@@ -594,8 +617,8 @@ HRESULT hantek_get_status(struct hantek_device *dev, bool *ptrigger_ready)
 
     DEBUG("*** STATUS BYTE: 0x%02x ***", status);
 
-    if (NULL != ptrigger_ready) {
-        *ptrigger_ready = !!(status & HT_STATUS_TRIGGERED_READY);
+    if (NULL != pdata_ready) {
+        *pdata_ready = !!(status & HT_STATUS_DATA_READY);
     }
 
 done:
@@ -627,33 +650,240 @@ done:
     return ret;
 }
 
-HRESULT hantek_configure_adc_max_chans(struct hantek_device *dev, size_t max_nr_chans)
+/**
+ * Write an HMCAD1511 control register
+ */
+static
+HRESULT _hantek_hmcad1511_write_reg(struct hantek_device *dev, uint8_t reg, uint16_t value)
 {
     HRESULT ret = H_OK;
 
-    uint8_t message[8] = { HT_MSG_CONFIGURE_FRONTEND, 0x00, 0x00, 0x00, 0x00, 0x55, 0x04, 0x00 };
+    uint8_t msg[8] = { HT_MSG_SEND_SPI, 0x00, 0x00, value & 0xff, (value >> 8) & 0xff, reg, HT_SPI_CS_HMCAD1511, 0x00 };
     size_t transferred = 0;
 
     HASSERT_ARG(NULL != dev);
 
-    switch (max_nr_chans) {
+    if (H_FAILED(ret = _hantek_bulk_cmd_out(dev->hdl, msg, sizeof(msg), &transferred))) {
+        DEBUG("Failed to send HMCAD1511 SPI command (reg = %02x, value = %04x), aborting.", (unsigned)reg, (unsigned)value);
+        goto done;
+    }
+
+    if (8 != transferred) {
+        DEBUG("Failure: expected to transfer 8 bytes, sent %zu", transferred);
+        ret = H_ERR_CONTROL_FAIL;
+        goto done;
+    }
+
+    /* TODO: do we really need this? */
+    usleep(3000);
+
+done:
+    return ret;
+}
+
+/**
+ * Set up the number of channels and clock divider
+ */
+static
+HRESULT _hantek_hmcad1511_set_channel_count(struct hantek_device *dev, size_t nr_chans)
+{
+    HRESULT ret = H_OK;
+
+    uint8_t clk_div = 0,
+            chan_mask  = 0;
+
+    HASSERT_ARG(NULL != dev);
+    HASSERT_ARG(0 != nr_chans && 4 > nr_chans);
+
+    /* Power down the front-end */
+    if (H_FAILED(ret = _hantek_hmcad1511_write_reg(dev, HMCAD1511_REG_SLEEP_PD, HMCAD1511_REG_SLEEP_PD_PD))) {
+        goto done;
+    }
+
+    switch (nr_chans) {
+    case 1:
+        /* Divide by 1 */
+        clk_div = 0;
+        chan_mask = 0x1;
+        break;
+    case 2:
+        /* Divide by 2 */
+        clk_div = 1;
+        chan_mask = 0x2;
+        break;
+    case 3:
+    case 4:
+        /* Divide by 4 */
+        clk_div = 2;
+        chan_mask = 0x4;
+        break;
+    default:
+        ret = H_ERR_INVAL_CHANNELS;
+        goto done;
+    }
+
+
+    if (H_FAILED(ret = _hantek_hmcad1511_write_reg(dev, HMCAD1511_REG_CHAN_NUM_CLK_DIV, (clk_div << 8) | chan_mask))) {
+        goto done;
+    }
+
+    /* Restore the front-end */
+    if (H_FAILED(ret = _hantek_hmcad1511_write_reg(dev, HMCAD1511_REG_SLEEP_PD, 0x0))) {
+        goto done;
+    }
+
+
+done:
+    return ret;
+}
+
+/**
+ * Set the channel mappings for inputs to output channels, based on the channel configuration
+ */
+static
+HRESULT _hantek_hmcad1511_set_channel_mappings(struct hantek_device *dev, size_t nr_chans)
+{
+    HRESULT ret = H_OK;
+
+    HASSERT_ARG(NULL != dev);
+    HASSERT_ARG(0 != nr_chans && 4 > nr_chans);
+
+
+
+    return ret;
+}
+
+static
+HRESULT _hantek_hmcad1511_set_coarse_gains(struct hantek_device *dev, size_t nr_chans)
+{
+    HRESULT ret = H_OK;
+
+    uint8_t reg = 0;
+    uint16_t gains = 0,
+             ch_id = 0;
+
+    HASSERT_ARG(NULL != dev);
+    HASSERT_ARG(0 != nr_chans && 4 > nr_chans);
+
+    switch (nr_chans) {
+    case 1:
+        reg = HMCAD1511_REG_CGAIN2_1;
+        for (size_t i = 0; i < HT_MAX_CHANNELS; i++) {
+            if (dev->channels[i].enabled == true) {
+                assert(dev->channels[i].vpd < 12);
+                gains = _hantek_vpd_gain_mapping[dev->channels[i].vpd] << 8;
+                break;
+            }
+        }
+        break;
+    case 2:
+        reg = HMCAD1511_REG_CGAIN2_1;
+        for (size_t i = 0; i < HT_MAX_CHANNELS && ch_id < 2; i++) {
+            if (dev->channels[i].enabled == true) {
+                assert(dev->channels[i].vpd < 12);
+                gains |= (_hantek_vpd_gain_mapping[dev->channels[i].vpd] & 0xf) << (4 * ch_id);
+                ch_id++;
+            }
+        }
+        assert(ch_id == 2);
+        break;
+    case 3:
+    case 4:
+        reg = HMCAD1511_REG_CGAIN4;
+        for (size_t i = 0; i < HT_MAX_CHANNELS; i++) {
+            if (dev->channels[i].enabled == true) {
+                assert(dev->channels[i].vpd < 12);
+                gains |= (_hantek_vpd_gain_mapping[dev->channels[i].vpd] & 0xf) << (4 * i);
+            }
+        }
+        break;
+    }
+
+    if (H_FAILED(ret = _hantek_hmcad1511_write_reg(dev, reg, gains))) {
+        DEBUG("Failed to set channel coarse gains, aborting.");
+        goto done;
+    }
+
+done:
+    return ret;
+}
+
+HRESULT hantek_configure_adc_routing(struct hantek_device *dev)
+{
+    HRESULT ret = H_OK;
+
+    size_t nr_chans = 0;
+
+    HASSERT_ARG(NULL != dev);
+
+    for (size_t i = 0; i < HT_MAX_CHANNELS; i++) {
+        if (dev->channels[i].enabled == true) {
+            nr_chans++;
+        }
+    }
+
+    if (H_FAILED(ret = _hantek_hmcad1511_set_channel_mappings(dev, nr_chans))) {
+        DEBUG("Failed to set channel mappings in ADC");
+        goto done;
+    }
+
+    if (H_FAILED(ret = _hantek_hmcad1511_set_channel_count(dev, nr_chans))) {
+        DEBUG("Failed to set active channel count in ADC, aborting.");
+        goto done;
+    }
+
+    if (H_FAILED(ret = _hantek_hmcad1511_set_coarse_gains(dev, nr_chans))) {
+        DEBUG("Failed to set coarse gains, aborting.");
+        goto done;
+    }
+
+done:
+    return ret;
+}
+
+HRESULT hantek_configure_adc_range_scaling(struct hantek_device *dev)
+{
+    HRESULT ret = H_OK;
+
+    uint8_t message[8] = { HT_MSG_SEND_SPI, 0x00, 0x00, 0x00, 0x00, HMCAD1511_REG_FS_CNTRL, HT_SPI_CS_HMCAD1511, 0x00 };
+    size_t transferred = 0,
+           nr_chans = 0;
+
+    HASSERT_ARG(NULL != dev);
+
+    for (size_t i = 0; i < HT_MAX_CHANNELS; i++) {
+        if (dev->channels[i].enabled == true) {
+            nr_chans++;
+        }
+    }
+
+    DEBUG("Setting range scaling for %zu channels", nr_chans);
+
+    if (nr_chans == 0) {
+        DEBUG("No channels enabled, aborting.");
+        ret = H_ERR_INVAL_CHANNELS;
+        goto done;
+    }
+
+    switch (nr_chans) {
     case 1:
         message[3] = dev->pcb_revision == 105 ? 0 : 25;
         break;
     case 2:
         message[3] = dev->pcb_revision == 105 ? 10 : 48;
         break;
+    case 3:
     case 4:
         message[3] = dev->pcb_revision == 105 ? 55 : 63;
         break;
     default:
-        DEBUG("Invalid channel count: %zu", max_nr_chans);
+        DEBUG("Invalid channel count: %zu", nr_chans);
         ret = H_ERR_INVAL_CHANNELS;
         goto done;
     }
 
     if (H_FAILED(ret = _hantek_bulk_cmd_out(dev->hdl, message, sizeof(message), &transferred))) {
-        DEBUG("Failed to set sampling rate.");
+        DEBUG("Failed to set scaling control");
         ret = H_ERR_INVAL_CHANNELS;
         goto done;
     }
@@ -682,7 +912,7 @@ HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned ch
 {
     HRESULT ret = H_OK;
 
-    uint8_t message[8] = { HT_MSG_CONFIGURE_FRONTEND, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 };
+    uint8_t message[8] = { HT_MSG_SEND_SPI, 0x0, 0x0, 0x0, 0x0, 0x0, HT_SPI_CS_SHIFT_REG, 0x0 };
     struct hantek_channel *this_chan = NULL;
     size_t transferred = 0;
 
@@ -695,12 +925,13 @@ HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned ch
     this_chan->coupling = coupling;
     this_chan->bw_limit = bw_limit;
 
+    /* Fill in the settings for each channel */
+    message[6] = 0x1;
+
     for (size_t i = 0; i < HT_MAX_CHANNELS; i++) {
         struct hantek_channel *chan = &dev->channels[i];
         message[2 + i] = _hantek_channel_setup(chan->vpd, chan->coupling, chan->bw_limit);
     }
-
-    message[6] = 0x1;
 
     if (H_FAILED(ret = _hantek_bulk_cmd_out(dev->hdl, message, sizeof(message), &transferred))) {
         DEBUG("Failed to send frontend configuration, aborting.");
@@ -839,12 +1070,12 @@ HRESULT _hantek_set_trigger_horizontal_offset(struct hantek_device *dev, uint32_
 
     HASSERT_ARG(NULL != dev);
 
-    
-
+/* TODO:
     if (H_FAILED(ret = _hantek_bulk_cmd_out(dev->hdl, message, sizeof(message), &transferred))) {
         DEBUG("Failed to set horizontal offset, aborting.");
         goto done;
     }
+*/
 
 done:
     return ret;

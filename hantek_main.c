@@ -85,7 +85,7 @@ int main(int argc, char * const *argv)
         goto done;
     }
 
-    if (H_FAILED(hantek_configure_adc_max_chans(dev, 1))) {
+    if (H_FAILED(hantek_configure_adc_range_scaling(dev))) {
         printf("Failed to set ADC front-end max channels, aborting.\n");
         goto done;
     }

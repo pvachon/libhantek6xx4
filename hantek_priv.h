@@ -58,7 +58,9 @@ struct hantek_device {
      */
     char serial_number[HT_SERIAL_NUMBER_LEN + 1];
 
-    /* Length of the capture buffer, in bytes */
+    /**
+     * Length of the capture buffer, in bytes
+     */
     size_t capture_buffer_len;
 
     /**
