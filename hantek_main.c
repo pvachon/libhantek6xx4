@@ -86,7 +86,7 @@ int main(int argc, char * const *argv)
     }
 
     for (size_t i = 0; i < 4; i++) {
-        if (H_FAILED(hantek_configure_channel_frontend(dev, i, HT_VPD_1V, HT_COUPLING_AC, false, true))) {
+        if (H_FAILED(hantek_configure_channel_frontend(dev, i, HT_VPD_1V, HT_COUPLING_AC, false, true, 128))) {
             printf("Failed to set up channel %zu\n", i);
             goto done;
         }

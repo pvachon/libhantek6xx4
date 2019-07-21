@@ -20,6 +20,7 @@ typedef int32_t HRESULT;
 #define H_ERR_NO_MEM                H_ERR(H_SUB_NONE, 3)
 #define H_ERR_BAD_SAMPLE_RATE       H_ERR(H_SUB_NONE, 4)
 #define H_ERR_INVAL_CHANNELS        H_ERR(H_SUB_NONE, 5)
+#define H_ERR_INVAL_VOLTS_PER_DIV   H_ERR(H_SUB_NONE, 6)
 
 #define H_ERR_NOT_FOUND             H_ERR(H_SUB_LIBUSB, 1)
 #define H_ERR_CONTROL_FAIL          H_ERR(H_SUB_LIBUSB, 2)
@@ -109,7 +110,7 @@ HRESULT hantek_set_sampling_rate(struct hantek_device *dev, enum hantek_time_per
 /**
  * Configure a particular channel's front end parameters.
  */
-HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned channel_num, enum hantek_volts_per_div volts_per_div, enum hantek_coupling coupling, bool bw_limit, bool enable);
+HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned channel_num, enum hantek_volts_per_div volts_per_div, enum hantek_coupling coupling, bool bw_limit, bool enable, unsigned chan_level);
 
 /**
  * Configure trigger mode and level

@@ -941,7 +941,103 @@ uint8_t _hantek_channel_setup(enum hantek_volts_per_div volts_per_div, enum hant
     return state;
 }
 
-HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned channel_num, enum hantek_volts_per_div volts_per_div, enum hantek_coupling coupling, bool bw_limit, bool enable)
+static const
+double _hantek_vpd_to_scale[12] = {
+    [0] = 50.0,
+    [1] = 20.0,
+    [2] = 10.0,
+    [3] = 5.0,
+    [4] = 2.0,
+    [5] = 1.0,
+    [6] = 5.0,
+    [7] = 2.0,
+    [8] = 1.0,
+    [9] = 5.0,
+    [10] = 2.0,
+    [11] = 1.0,
+};
+
+static
+HRESULT _hantek_set_frontend_level(struct hantek_device *dev, unsigned channel_num, unsigned chan_level)
+{
+    HRESULT ret = H_OK;
+
+    uint8_t message[4] = { 0x0 };
+    uint16_t offset = 0;
+    uint16_t hi = 0,
+             lo = 0,
+             v = 0,
+             q = 0,
+             upper = 0,
+             lower = 0,
+             mode_map = 0;
+    double x = 0.0;
+    const uint16_t *line = NULL;
+
+    switch (channel_num) {
+    case 0:
+        message[0] = 0x0;
+        break;
+    case 1:
+        message[0] = 0x1;
+        break;
+    case 2:
+        message[0] = 0x2;
+        break;
+    case 3:
+        message[0] = 0x4;
+        break;
+    default:
+        DEBUG("Invalid channel ID %u, aborting.", channel_num);
+        ret = H_ERR_INVAL_CHANNELS;
+        goto done;
+    }
+
+    switch (dev->channels[channel_num].vpd) {
+    case 0:
+    case 1:
+    case 2:
+    case 3:
+    case 4:
+    case 5:
+        offset = 0x3c;
+        break;
+    case 6:
+    case 7:
+    case 8:
+        offset = 0x60;
+        break;
+    case 9:
+    case 10:
+    case 11:
+        offset = 0x84;
+        break;
+    default:
+        DEBUG("Invalid Volts/Division: %u", dev->channels[channel_num].vpd);
+        ret = H_ERR_INVAL_VOLTS_PER_DIV;
+        goto done;
+    }
+
+    line = &dev->cal_data[channel_num * 144];
+
+    hi = line[offset + mode_map];
+    lo = line[offset + mode_map + 1];
+
+    v = (unsigned)((((double)(hi + lo))/2.0) + 0.5);
+    x = (double)(lo - v)/_hantek_vpd_to_scale[dev->channels[channel_num].vpd];
+    q = (unsigned)(x + 0.5);
+    upper = v + q;
+    lower = v - q;
+
+    offset = (double)(upper - lower)/255.0 * chan_level + lower;
+
+    
+
+done:
+    return ret;
+}
+
+HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned channel_num, enum hantek_volts_per_div volts_per_div, enum hantek_coupling coupling, bool bw_limit, bool enable, unsigned chan_level)
 {
     HRESULT ret = H_OK;
 
