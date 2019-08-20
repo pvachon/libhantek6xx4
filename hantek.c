@@ -766,12 +766,12 @@ HRESULT _hantek_hmcad1511_set_channel_mappings(struct hantek_device *dev, size_t
     }
 
     /* Write out the two input select registers */
-    if (H_FAILED(ret = _hantek_hmcad1511_write_reg(dev, HMCAD1511_REG_INP_SEL_CH_LO, chan_map[0] | (chan_map[1] << 8)))) {
+    if (H_FAILED(ret = _hantek_hmcad1511_write_reg(dev, HMCAD1511_REG_INP_SEL_CH_HI, (chan_map[0] << 8)| chan_map[1]))) {
         DEBUG("Failed to write out channel map for LO registers");
         goto done;
     }
 
-    if (H_FAILED(ret = _hantek_hmcad1511_write_reg(dev, HMCAD1511_REG_INP_SEL_CH_HI, chan_map[2] | (chan_map[3] << 8)))) {
+    if (H_FAILED(ret = _hantek_hmcad1511_write_reg(dev, HMCAD1511_REG_INP_SEL_CH_LO, (chan_map[2] << 8) | chan_map[3]))) {
         DEBUG("Failed to write out channel map for HI registers");
         goto done;
     }
