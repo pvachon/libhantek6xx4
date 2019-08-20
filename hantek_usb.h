@@ -61,8 +61,11 @@
 #define HT_MSG_SET_TRIGGER_LEVEL            0x07
 #define HT_MSG_SEND_SPI                     0x08
 #define HT_MSG_GET_HW_VERSION               0x09
+/* missing 0x0a */
+/* missing 0x0b */
 #define HT_MSG_INITIALIZE                   0x0c
 #define HT_MSG_BUFFER_STATUS                0x0d
+/* missing 0x0e */
 #define HT_MSG_SET_TIME_DIVISION            0x0f
 #define HT_MSG_SET_TRIG_HORIZ_POS           0x10
 #define HT_MSG_CONFIGURE_TRIGGER            0x11

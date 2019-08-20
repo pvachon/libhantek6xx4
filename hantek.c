@@ -932,8 +932,6 @@ uint8_t _hantek_channel_setup(enum hantek_volts_per_div volts_per_div, enum hant
     state |= (coupling == HT_COUPLING_DC) << HT_CHAN_COUPLING_SHIFT;
     state |= 1 << 1;
 
-    DEBUG("STATE for channel: %02x (vpd = %d)", (unsigned)state, volts_per_div);
-
     return state;
 }
 
@@ -973,16 +971,16 @@ HRESULT _hantek_set_frontend_level(struct hantek_device *dev, unsigned channel_n
 
     switch (channel_num) {
     case 0:
-        message[0] = 0x0;
+        message[0] = HT_MSG_POSITION_CH0;
         break;
     case 1:
-        message[0] = 0x1;
+        message[0] = HT_MSG_POSITION_CH1;
         break;
     case 2:
-        message[0] = 0x2;
+        message[0] = HT_MSG_POSITION_CH2;
         break;
     case 3:
-        message[0] = 0x4;
+        message[0] = HT_MSG_POSITION_CH3;
         break;
     default:
         DEBUG("Invalid channel ID %u, aborting.", channel_num);
