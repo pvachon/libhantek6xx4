@@ -149,8 +149,6 @@ HRESULT _hantek_bulk_cmd_out(libusb_device_handle *dev, uint8_t *data, size_t le
 
     *ptransferred = 0;
 
-    DEBUG("Sending %zu bytes command, sending %zu bytes of prelude", len, sizeof(cmd_start));
-
     /* Send the magical "start of transaction" command */
     if (0 >= (uret = libusb_control_transfer(dev,
                     LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
@@ -191,8 +189,6 @@ HRESULT _hantek_bulk_cmd_out(libusb_device_handle *dev, uint8_t *data, size_t le
         goto done;
     }
 
-    DEBUG("Transferred OUT %d bytes, expected %zu", transferred, len);
-
     *ptransferred = transferred;
 
 done:
@@ -223,8 +219,6 @@ HRESULT _hantek_bulk_in(libusb_device_handle *hdl, uint8_t *data, size_t buf_len
         ret = H_ERR_NOT_READY;
         goto done;
     }
-
-    DEBUG("Transferred IN %d bytes, expected %zu", transferred, buf_len);
 
     *ptransferred = transferred;
 done:
@@ -755,17 +749,17 @@ HRESULT _hantek_hmcad1511_set_channel_mappings(struct hantek_device *dev, size_t
             switch (nr_chans) {
             case 1:
                 /* One channel maps to all ADC channels (since the HMCAD1511 interleaves the ADCs) */
-                chan_map[0] = chan_map[1] = chan_map[2] = chan_map[3] = 1 << i;
+                chan_map[0] = chan_map[1] = chan_map[2] = chan_map[3] = 0x2 << i;
                 chan_id = 4;
                 break;
             case 2:
                 /* A pair of channels (high or low) maps to an ADC channel */
-                chan_map[chan_id] = chan_map[chan_id + 1] = 1 << i;
+                chan_map[chan_id] = chan_map[chan_id + 1] = 0x2 << i;
                 chan_id += 2;
                 break;
             case 3:
             case 4:
-                chan_map[i] = 1 << i;
+                chan_map[i] = 0x2 << i;
                 break;
             }
         }
@@ -931,12 +925,14 @@ uint8_t _hantek_channel_setup(enum hantek_volts_per_div volts_per_div, enum hant
     uint8_t state = 0;
 
     state |= (bandwidth_limit == true) << HT_CHAN_BW_LIMIT_SHIFT;
-    state |= (volts_per_div < HT_VPD_1V) << HT_CHAN_LT1V_SHIFT;
-    state |= (volts_per_div >= HT_VPD_1V) << HT_CHAN_GE1V_SHIFT;
-    state |= (volts_per_div < HT_VPD_100MV) << HT_CHAN_LT100MV_SHIFT;
-    state |= (volts_per_div >= HT_VPD_100MV) << HT_CHAN_GE100MV_SHIFT;
+    state |= (volts_per_div > HT_VPD_1V) << HT_CHAN_GT1V_SHIFT;
+    state |= (volts_per_div <= HT_VPD_1V) << HT_CHAN_LE1V_SHIFT;
+    state |= (volts_per_div > HT_VPD_100MV) << HT_CHAN_GT100MV_SHIFT;
+    state |= (volts_per_div <= HT_VPD_100MV) << HT_CHAN_LE100MV_SHIFT;
     state |= (coupling == HT_COUPLING_DC) << HT_CHAN_COUPLING_SHIFT;
     state |= 1 << 1;
+
+    DEBUG("STATE for channel: %02x (vpd = %d)", (unsigned)state, volts_per_div);
 
     return state;
 }
@@ -973,6 +969,7 @@ HRESULT _hantek_set_frontend_level(struct hantek_device *dev, unsigned channel_n
              mode_map = 0;
     double x = 0.0;
     const uint16_t *line = NULL;
+    size_t transferred = 0;
 
     switch (channel_num) {
     case 0:
@@ -1029,9 +1026,21 @@ HRESULT _hantek_set_frontend_level(struct hantek_device *dev, unsigned channel_n
     upper = v + q;
     lower = v - q;
 
-    offset = (double)(upper - lower)/255.0 * chan_level + lower;
+    offset = ((double)(upper - lower)/255.0) * chan_level + lower;
 
-    
+    message[2] = offset & 0xff;
+    message[3] = (offset >> 8) & 0xff;
+
+    if (H_FAILED(ret = _hantek_bulk_cmd_out(dev->hdl, message, sizeof(message), &transferred))) {
+        DEBUG("Failed to send frontend configuration, aborting.");
+        goto done;
+    }
+
+    if (transferred != sizeof(message)) {
+        DEBUG("Failed to transfer message to set channel position, aborting.");
+        ret = H_ERR_CONTROL_FAIL;
+        goto done;
+    }
 
 done:
     return ret;
@@ -1081,6 +1090,10 @@ HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned ch
 
     message[7] = 0x1;
 
+    for (size_t i = 0; i < HT_MAX_CHANNELS; i++) {
+        message[2 + i] &= 0x86;
+    }
+
     if (H_FAILED(ret = _hantek_bulk_cmd_out(dev->hdl, message, sizeof(message), &transferred)))  {
         DEBUG("Failed to send second frontend configuration command, aborting.");
         goto done;
@@ -1094,6 +1107,13 @@ HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned ch
 
     /* This is also what the SDK does */
     usleep(50000);
+
+    /* Set the level of this channel */
+    if (H_FAILED(ret = _hantek_set_frontend_level(dev, channel_num, chan_level))) {
+        DEBUG("Failed to set level of channel, aborting.");
+        goto done;
+    }
+
 done:
     return ret;
 }
@@ -1230,6 +1250,115 @@ HRESULT hantek_configure_trigger(struct hantek_device *dev, unsigned channel_num
 
     /* Set trigger horizontal offset, with hard-coded slop for now */
     if (H_FAILED(ret = _hantek_set_trigger_horizontal_offset(dev, trig_horiz_offset, 4))) {
+        goto done;
+    }
+
+done:
+    return ret;
+}
+
+static
+HRESULT _hantek_capture_read_status(struct hantek_device *dev, uint64_t *pstatus)
+{
+    HRESULT ret = H_OK;
+
+    uint8_t message[2] = { HT_MSG_BUFFER_STATUS, 0x00 };
+    size_t transferred = 0;
+    uint8_t result[5] = { 0x0 };
+
+    HASSERT_ARG(NULL != dev);
+
+    if (H_FAILED(ret = _hantek_bulk_cmd_out(dev->hdl, message, sizeof(message), &transferred))) {
+        DEBUG("Failed to send buffer status request command, aborting.");
+        goto done;
+    }
+
+    if (transferred != sizeof(message)) {
+        DEBUG("Failed to transfer message for some reason, aborting.");
+        ret = H_ERR_NOT_READY;
+        goto done;
+    }
+
+    if (H_FAILED(ret = _hantek_bulk_read_in(dev->hdl, result, sizeof(result)))) {
+        DEBUG("Failed to read in status word, aborting.");
+        goto done;
+    }
+
+    *pstatus = ((uint64_t)result[4] << 32) |
+            ((uint64_t)result[3] << 24) |
+            ((uint64_t)result[2] << 16) |
+            ((uint64_t)result[1] << 8) |
+            ((uint64_t)result[0]);
+
+    DEBUG("Capture Status word: %010lx\n", *pstatus);
+
+done:
+    return ret;
+}
+
+static
+HRESULT __hantek_send_readback_req(struct hantek_device *dev)
+{
+    HRESULT ret = H_OK;
+
+    uint8_t message[4] = { HT_MSG_SEND_START_CAPTURE, 0x00, 0x00, 0x00 };
+
+    HASSERT_ARG(NULL != dev);
+
+
+
+    return ret;
+}
+
+static
+HRESULT _hantek_read_capture_buffer(struct hantek_device *dev, uint8_t *ch1, uint8_t *ch2, uint8_t *ch3, uint8_t *ch4)
+{
+    HRESULT ret = H_OK;
+
+    HASSERT_ARG(NULL != dev);
+
+    if (H_FAILED(ret = __hantek_send_readback_req(dev))) {
+        DEBUG("Failed to send readback request, aborting.");
+        goto done;
+    }
+
+done:
+    return ret;
+}
+
+HRESULT hantek_retrieve_buffer(struct hantek_device *dev, uint8_t *ch1, uint8_t *ch2, uint8_t *ch3, uint8_t *ch4)
+{
+    HRESULT ret = H_OK;
+
+    uint64_t cap_status = 0;
+
+    HASSERT_ARG(NULL != dev);
+
+    if (H_FAILED(ret = _hantek_capture_read_status(dev, &cap_status))) {
+        DEBUG("Failed to get capture readback status, aborting.");
+        goto done;
+    }
+
+done:
+    return ret;
+}
+
+HRESULT hantek_start_capture(struct hantek_device *dev, enum hantek_capture_mode mode)
+{
+    HRESULT ret = H_OK;
+
+    uint8_t message[4] = { HT_MSG_SEND_START_CAPTURE, 0x00, mode, 0x00 };
+    size_t transferred = 0;
+
+    HASSERT_ARG(NULL != dev);
+
+    if (H_FAILED(ret = _hantek_bulk_cmd_out(dev->hdl, message, sizeof(message), &transferred))) {
+        DEBUG("Failed to send start capture command, aborting.");
+        goto done;
+    }
+
+    if (transferred != sizeof(message)) {
+        DEBUG("Failed to transfer message for some reason, aborting.");
         goto done;
     }
 

@@ -47,27 +47,35 @@
 /**
  * Message IDs, to the best of our guesses
  */
-#define HT_MSG_GET_STATUS                   0x06
-#define HT_MSG_SET_TRIGGER_LEVEL            0x07
 
 /**
  * Send up to 32 bits of data across the device's SPI bus
  */
+#define HT_MSG_POSITION_CH0                 0x00
+#define HT_MSG_POSITION_CH1                 0x01
+#define HT_MSG_POSITION_CH2                 0x02
+#define HT_MSG_SEND_START_CAPTURE           0x03
+#define HT_MSG_POSITION_CH3                 0x04
+#define HT_MSG_READBACK_BUFFER              0x05
+#define HT_MSG_GET_STATUS                   0x06
+#define HT_MSG_SET_TRIGGER_LEVEL            0x07
 #define HT_MSG_SEND_SPI                     0x08
 #define HT_MSG_GET_HW_VERSION               0x09
 #define HT_MSG_INITIALIZE                   0x0c
+#define HT_MSG_BUFFER_STATUS                0x0d
 #define HT_MSG_SET_TIME_DIVISION            0x0f
 #define HT_MSG_SET_TRIG_HORIZ_POS           0x10
 #define HT_MSG_CONFIGURE_TRIGGER            0x11
+#define HT_MSG_SET_TRIGGER_SOURCE           0x12
 
 /**
  * Channel configuration byte bitshifts
  */
 #define HT_CHAN_BW_LIMIT_SHIFT              7
-#define HT_CHAN_LT1V_SHIFT                  6
-#define HT_CHAN_GE1V_SHIFT                  5
-#define HT_CHAN_LT100MV_SHIFT               4
-#define HT_CHAN_GE100MV_SHIFT               3
+#define HT_CHAN_GT1V_SHIFT                  6
+#define HT_CHAN_LE1V_SHIFT                  5
+#define HT_CHAN_GT100MV_SHIFT               4
+#define HT_CHAN_LE100MV_SHIFT               3
 #define HT_CHAN_COUPLING_SHIFT              2
 
 /**

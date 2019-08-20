@@ -92,6 +92,12 @@ enum hantek_trigger_slope {
     HT_TRIGGER_SLOPE_FALL = 1,
 };
 
+enum hantek_capture_mode {
+    HT_CAPTURE_AUTO = 0x0,
+    HT_CAPTURE_ROLL = 0x1,
+    HT_CAPTURE_SINGLE = 0x2,
+};
+
 /**
  * Open a Hantek 6xx4 device.
  */
@@ -123,6 +129,11 @@ HRESULT hantek_configure_trigger(struct hantek_device *dev, unsigned channel_num
 HRESULT hantek_configure_adc_range_scaling(struct hantek_device *dev);
 
 /**
+ * Start capture
+ */
+HRESULT hantek_start_capture(struct hantek_device *dev, enum hantek_capture_mode mode);
+
+/**
  * Get status from the oscilloscope
  */
 HRESULT hantek_get_status(struct hantek_device *dev, bool *pdata_ready);
@@ -131,3 +142,8 @@ HRESULT hantek_get_status(struct hantek_device *dev, bool *pdata_ready);
  * Configure the ADC's routing, based on the current channel setup
  */
 HRESULT hantek_configure_adc_routing(struct hantek_device *dev);
+
+/**
+ * Retrieve sample buffer, if one is ready
+ */
+HRESULT hantek_retrieve_buffer(struct hantek_device *dev, uint8_t *ch1, uint8_t *ch2, uint8_t *ch3, uint8_t *ch4);

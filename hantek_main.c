@@ -86,7 +86,7 @@ int main(int argc, char * const *argv)
     }
 
     for (size_t i = 0; i < 4; i++) {
-        if (H_FAILED(hantek_configure_channel_frontend(dev, i, HT_VPD_1V, HT_COUPLING_AC, false, true, 128))) {
+        if (H_FAILED(hantek_configure_channel_frontend(dev, i, HT_VPD_50MV, HT_COUPLING_AC, false, true, 128))) {
             printf("Failed to set up channel %zu\n", i);
             goto done;
         }
@@ -114,6 +114,28 @@ int main(int argc, char * const *argv)
 
     if (true == dump_bitstream_flash) {
         _dump_bitstream_flash(dev, bitstream_flash_filename);
+    }
+
+    if (H_FAILED(hantek_start_capture(dev, HT_CAPTURE_AUTO))) {
+        printf("Failed to start capture, aborting.\n");
+        goto done;
+    }
+
+    printf("Waiting for ready flag to fire.\n");
+
+    bool ready = false;
+    while (false == ready) {
+        if (H_FAILED(hantek_get_status(dev, &ready))) {
+            printf("Failed to get status, aborting.\n");
+            goto done;
+        }
+    }
+
+    printf("Got ready flag, reading back the buffer\n");
+
+    if (H_FAILED(hantek_retrieve_buffer(dev, NULL, NULL, NULL, NULL))) {
+        printf("Failed to retrieve buffer, aborting.\n");
+        goto done;
     }
 
 done:
