@@ -645,15 +645,51 @@ done:
     return ret;
 }
 
+static
+uint32_t _hantek_tpd_to_spacing[HT_ST_MAX] = {
+    [HT_ST_2NS] = 1,
+    [HT_ST_5NS] = 1,
+    [HT_ST_10NS] = 1,
+    [HT_ST_25NS] = 1,
+    [HT_ST_50NS] = 1,
+    [HT_ST_100NS] = 1,
+    [HT_ST_250NS] = 1,
+    [HT_ST_500NS] = 1,
+    [HT_ST_1000NS] = 1,
+    [HT_ST_2500NS] = 1,
+    [HT_ST_5000NS] = 2,
+    [HT_ST_10US] = 5,
+    [HT_ST_25US] = 10,
+    [HT_ST_50US] = 25,
+    [HT_ST_100US] = 50,
+    [HT_ST_250US] = 100,
+    [HT_ST_500US] = 250,
+    [HT_ST_1000US] = 500,
+    [HT_ST_2500US] = 1000,
+    [HT_ST_5000US] = 2500,
+    [HT_ST_10MS] = 5000,
+    [HT_ST_25MS] = 10000,
+    [HT_ST_50MS] = 25000,
+    [HT_ST_100MS] = 50000,
+    [HT_ST_250MS] = 100000,
+    [HT_ST_500MS] = 250000,
+    [HT_ST_1S] = 500000,
+};
+
 HRESULT hantek_set_sampling_rate(struct hantek_device *dev, enum hantek_time_per_division sample_spacing)
 {
     HRESULT ret = H_OK;
 
     uint8_t message[6] = { HT_MSG_SET_TIME_DIVISION, 0x0 };
-    uint32_t spacing = (uint32_t)sample_spacing - 1;
+    uint32_t spacing = 0;
     size_t transferred = 0;
 
     HASSERT_ARG(NULL != dev);
+
+    static_assert((HT_ST_MAX * 4) == sizeof(_hantek_tpd_to_spacing),
+            "You've added some time divisions but not updated the spacing array");
+
+    spacing = _hantek_tpd_to_spacing[sample_spacing] - 1;
 
     message[2] = spacing & 0xff;
     message[3] = (spacing >> 8) & 0xff;
