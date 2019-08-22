@@ -33,6 +33,32 @@ uint8_t _hantek_vpd_gain_mapping[12] = {
     0x0,
 };
 
+static inline
+uint8_t __hantek_device_chan_mask(struct hantek_device *dev)
+{
+    uint8_t mask = 0;
+    struct hantek_channel *chans = dev->channels;
+
+    for (size_t i = 0; i < 4; i++) {
+        mask |= ((chans[i].enabled == true) << i);
+    }
+
+    return mask;
+}
+
+static inline
+uint8_t __hantek_device_nr_active_chans(struct hantek_device *dev)
+{
+    uint8_t chan_cnt = 0;
+    struct hantek_channel *chans = dev->channels;
+
+    for (size_t i = 0; i < 4; i++) {
+        chan_cnt += (chans[i].enabled == true);
+    }
+
+    return chan_cnt;
+}
+
 static
 HRESULT _hantek_device_find(libusb_device **pdev)
 {
@@ -1063,8 +1089,6 @@ HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned ch
     this_chan->enabled = enable;
 
     /* Fill in the settings for each channel */
-    message[6] = 0x1;
-
     for (size_t i = 0; i < HT_MAX_CHANNELS; i++) {
         struct hantek_channel *chan = &dev->channels[i];
         message[2 + i] = _hantek_channel_setup(chan->vpd, chan->coupling, chan->bw_limit);
@@ -1086,10 +1110,13 @@ HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned ch
     /* This is what the SDK does */
     usleep(2000);
 
+    /* This seems to force latching */
     message[7] = 0x1;
 
     for (size_t i = 0; i < HT_MAX_CHANNELS; i++) {
-        message[2 + i] &= 0x86;
+        message[2 + i] &= (1 << HT_CHAN_BW_LIMIT_SHIFT) |
+                          (1 << HT_CHAN_COUPLING_SHIFT) |
+                          (1 << 1);
     }
 
     if (H_FAILED(ret = _hantek_bulk_cmd_out(dev->hdl, message, sizeof(message), &transferred)))  {
@@ -1223,7 +1250,55 @@ HRESULT _hantek_set_trigger_horizontal_offset(struct hantek_device *dev, uint32_
         DEBUG("Failed to set horizontal offset, aborting.");
         goto done;
     }
+
+done:
 */
+    return ret;
+}
+
+static
+HRESULT _hantek_set_trigger_source(struct hantek_device *dev, uint8_t channel, uint8_t peak)
+{
+    HRESULT ret = H_OK;
+
+    uint8_t message[6] = { HT_MSG_SET_TRIGGER_SOURCE, 0x0 };
+    bool is_ch_not_enabled = false;
+    uint8_t mask = 0;
+    size_t transferred = 0;
+
+    HASSERT_ARG(NULL != dev);
+    HASSERT_ARG(channel < 4);
+
+    DEBUG("WARNING: setting trigger source has FIXMEs");
+
+    is_ch_not_enabled = !dev->channels[channel].enabled;
+
+    /* FIXME: this is only valid for 250MSPS and lower */
+    switch (__hantek_device_nr_active_chans(dev)) {
+    case 1:
+        mask = 0x3;
+        break;
+    case 2:
+        mask = 0x2;
+        break;
+    case 3:
+    case 4:
+        mask = 0x1;
+        break;
+    default:
+        ret = H_ERR_BAD_ARGS;
+        DEBUG("Weird number of channels active, aborting.");
+        goto done;
+    }
+
+    message[2] = ((peak & 1) << 6) | (__hantek_device_chan_mask(dev) << 2) | (mask & 0x3);
+    message[4] = 0; /* FIXME: only valid for sampling rates 250MSPS and below */
+    message[5] = (is_ch_not_enabled << 2) | (channel & 0x3);
+
+    if (H_FAILED(ret = _hantek_bulk_cmd_out(dev->hdl, message, sizeof(message), &transferred))) {
+        DEBUG("Failed to send set trigger level message, aborting.");
+        goto done;
+    }
 
 done:
     return ret;
@@ -1238,6 +1313,10 @@ HRESULT hantek_configure_trigger(struct hantek_device *dev, unsigned channel_num
     HASSERT_ARG(trig_horiz_offset <= 100);
 
     if (H_FAILED(ret = _hantek_set_trigger_mode(dev->hdl, mode, slope, coupling))) {
+        goto done;
+    }
+
+    if (H_FAILED(ret = _hantek_set_trigger_source(dev, channel_num, 0))) {
         goto done;
     }
 

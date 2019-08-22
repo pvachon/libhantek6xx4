@@ -92,7 +92,7 @@ int main(int argc, char * const *argv)
         }
     }
 
-    if (H_FAILED(hantek_configure_trigger(dev, 1, HT_TRIGGER_EDGE, HT_TRIGGER_SLOPE_RISE, HT_COUPLING_AC, 160, 50))) {
+    if (H_FAILED(hantek_configure_trigger(dev, 0, HT_TRIGGER_EDGE, HT_TRIGGER_SLOPE_RISE, HT_COUPLING_AC, 160, 50))) {
         printf("Failed to set triggering, aborting.\n");
         goto done;
     }
