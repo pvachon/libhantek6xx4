@@ -1278,17 +1278,33 @@ HRESULT _hantek_set_trigger_horizontal_offset(struct hantek_device *dev, uint32_
 
     uint8_t message[14] = { HT_MSG_SET_TRIG_HORIZ_POS, 0x0 };
     size_t transferred = 0;
+    uint64_t after = 0x831c4,
+             before = 0x7d7d0;
 
     HASSERT_ARG(NULL != dev);
 
-/* TODO:
+    DEBUG("Warning: this function has FIXMEs");
+
+    /* FIXME: hardcoded for experimentation */
+
+    message[2] = (after >> 0) & 0xff;
+    message[3] = (after >> 8) & 0xff;
+    message[4] = (after >> 16) & 0xff;
+    message[5] = (after >> 24) & 0xff;
+    message[6] = (after >> 32) & 0xff;
+
+    message[7] = (before >> 0) & 0xff;
+    message[8] = (before >> 8) & 0xff;
+    message[9] = (before >> 16) & 0xff;
+    message[10] = (before >> 24) & 0xff;
+    message[11] = (before >> 32) & 0xff;
+
     if (H_FAILED(ret = _hantek_bulk_cmd_out(dev->hdl, message, sizeof(message), &transferred))) {
         DEBUG("Failed to set horizontal offset, aborting.");
         goto done;
     }
 
 done:
-*/
     return ret;
 }
 
