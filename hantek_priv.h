@@ -34,6 +34,11 @@ struct hantek_channel {
     bool bw_limit;
 
     /**
+     * The "level" of this channel
+     */
+    uint8_t level;
+
+    /**
      * Volts per division for this channel
      */
     enum hantek_volts_per_div vpd;
@@ -67,6 +72,11 @@ struct hantek_device {
      * FPGA version, read back after reset
      */
     uint16_t fpga_version;
+
+    /**
+     * Hardware revision
+     */
+    uint32_t hardware_rev;
 
     /**
      * Configuration per channel

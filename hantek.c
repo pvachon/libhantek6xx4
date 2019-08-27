@@ -434,9 +434,41 @@ HRESULT _hantek_get_fpga_version(libusb_device_handle *hdl, uint16_t *pfpga_ver)
     }
 
     /* Extract the FPGA version ID */
-    *pfpga_ver = (uint16_t)rx_buf[0] << 8 | rx_buf[1];
+    *pfpga_ver = (uint16_t)rx_buf[1] << 8 | rx_buf[0];
 
     DEBUG("FPGA version: %04x", *pfpga_ver);
+
+done:
+    return ret;
+}
+
+static
+HRESULT _hantek_get_hardware_rev(libusb_device_handle *hdl, uint32_t *phw_rev)
+{
+    HRESULT ret = H_OK;
+
+    uint8_t msg[2] = { HT_MSG_GET_HW_VERSION, 0x00 };
+    size_t transferred = 0;
+    uint32_t version = 0;
+
+    HASSERT_ARG(NULL != hdl);
+    HASSERT_ARG(NULL != phw_rev);
+
+    *phw_rev = 0;
+
+    if (H_FAILED(ret = _hantek_bulk_cmd_out(hdl, msg, sizeof(msg), &transferred))) {
+        DEBUG("Failed to send get hardware revision command.");
+        goto done;
+    }
+
+    if (H_FAILED(ret = _hantek_bulk_read_in(hdl, (void *)&version, sizeof(version)))) {
+        DEBUG("Failed to read back hardware revision code, aborting.");
+        goto done;
+    }
+
+    DEBUG("Hardware revision: %08x", version);
+
+    *phw_rev = version;
 
 done:
     return ret;
@@ -558,6 +590,13 @@ HRESULT hantek_open_device(struct hantek_device **pdev, uint32_t capture_buffer_
         DEBUG("Failed to get device calibration data, aborting.");
         goto done;
     }
+
+    /* Get the hardware revision */
+    if (H_FAILED(ret = _hantek_get_hardware_rev(hdl, &nhdev->hardware_rev))) {
+        DEBUG("Failed to get hardware revision, aborting.");
+        goto done;
+    }
+
 
 #ifdef HT_DEBUG
     printf("Calibration data:\n");
@@ -730,7 +769,6 @@ HRESULT _hantek_hmcad1511_write_reg(struct hantek_device *dev, uint8_t reg, uint
         goto done;
     }
 
-    /* TODO: do we really need this? */
     usleep(3000);
 
 done:
@@ -828,13 +866,13 @@ HRESULT _hantek_hmcad1511_set_channel_mappings(struct hantek_device *dev, size_t
     }
 
     /* Write out the two input select registers */
-    if (H_FAILED(ret = _hantek_hmcad1511_write_reg(dev, HMCAD1511_REG_INP_SEL_CH_HI, (chan_map[0] << 8)| chan_map[1]))) {
-        DEBUG("Failed to write out channel map for LO registers");
+    if (H_FAILED(ret = _hantek_hmcad1511_write_reg(dev, HMCAD1511_REG_INP_SEL_CH_LO, (chan_map[2] << 8) | chan_map[3]))) {
+        DEBUG("Failed to write out channel map for HI registers");
         goto done;
     }
 
-    if (H_FAILED(ret = _hantek_hmcad1511_write_reg(dev, HMCAD1511_REG_INP_SEL_CH_LO, (chan_map[2] << 8) | chan_map[3]))) {
-        DEBUG("Failed to write out channel map for HI registers");
+    if (H_FAILED(ret = _hantek_hmcad1511_write_reg(dev, HMCAD1511_REG_INP_SEL_CH_HI, (chan_map[0] << 8)| chan_map[1]))) {
+        DEBUG("Failed to write out channel map for LO registers");
         goto done;
     }
 
@@ -897,40 +935,8 @@ done:
     return ret;
 }
 
-HRESULT hantek_configure_adc_routing(struct hantek_device *dev)
-{
-    HRESULT ret = H_OK;
-
-    size_t nr_chans = 0;
-
-    HASSERT_ARG(NULL != dev);
-
-    for (size_t i = 0; i < HT_MAX_CHANNELS; i++) {
-        if (dev->channels[i].enabled == true) {
-            nr_chans++;
-        }
-    }
-
-    if (H_FAILED(ret = _hantek_hmcad1511_set_channel_mappings(dev, nr_chans))) {
-        DEBUG("Failed to set channel mappings in ADC");
-        goto done;
-    }
-
-    if (H_FAILED(ret = _hantek_hmcad1511_set_channel_count(dev, nr_chans))) {
-        DEBUG("Failed to set active channel count in ADC, aborting.");
-        goto done;
-    }
-
-    if (H_FAILED(ret = _hantek_hmcad1511_set_coarse_gains(dev, nr_chans))) {
-        DEBUG("Failed to set coarse gains, aborting.");
-        goto done;
-    }
-
-done:
-    return ret;
-}
-
-HRESULT hantek_configure_adc_range_scaling(struct hantek_device *dev)
+static
+HRESULT _hantek_configure_adc_range_scaling(struct hantek_device *dev)
 {
     HRESULT ret = H_OK;
 
@@ -974,6 +980,46 @@ HRESULT hantek_configure_adc_range_scaling(struct hantek_device *dev)
     if (H_FAILED(ret = _hantek_bulk_cmd_out(dev->hdl, message, sizeof(message), &transferred))) {
         DEBUG("Failed to set scaling control");
         ret = H_ERR_INVAL_CHANNELS;
+        goto done;
+    }
+
+    usleep(3000);
+
+done:
+    return ret;
+}
+
+HRESULT hantek_configure_adc_routing(struct hantek_device *dev)
+{
+    HRESULT ret = H_OK;
+
+    size_t nr_chans = 0;
+
+    HASSERT_ARG(NULL != dev);
+
+    for (size_t i = 0; i < HT_MAX_CHANNELS; i++) {
+        if (dev->channels[i].enabled == true) {
+            nr_chans++;
+        }
+    }
+
+    if (H_FAILED(_hantek_configure_adc_range_scaling(dev))) {
+        printf("Failed to set ADC front-end max channels, aborting.\n");
+        goto done;
+    }
+
+    if (H_FAILED(ret = _hantek_hmcad1511_set_channel_mappings(dev, nr_chans))) {
+        DEBUG("Failed to set channel mappings in ADC");
+        goto done;
+    }
+
+    if (H_FAILED(ret = _hantek_hmcad1511_set_channel_count(dev, nr_chans))) {
+        DEBUG("Failed to set active channel count in ADC, aborting.");
+        goto done;
+    }
+
+    if (H_FAILED(ret = _hantek_hmcad1511_set_coarse_gains(dev, nr_chans))) {
+        DEBUG("Failed to set coarse gains, aborting.");
         goto done;
     }
 
@@ -1102,6 +1148,8 @@ HRESULT _hantek_set_frontend_level(struct hantek_device *dev, unsigned channel_n
         goto done;
     }
 
+    usleep(20000);
+
 done:
     return ret;
 }
@@ -1123,6 +1171,7 @@ HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned ch
     this_chan->coupling = coupling;
     this_chan->bw_limit = bw_limit;
     this_chan->enabled = enable;
+    this_chan->level = chan_level;
 
     /* Fill in the settings for each channel */
     for (size_t i = 0; i < HT_MAX_CHANNELS; i++) {
@@ -1144,7 +1193,7 @@ HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned ch
     transferred = 0;
 
     /* This is what the SDK does */
-    usleep(2000);
+    usleep(4000);
 
     /* This seems to force latching */
     message[7] = 0x1;
@@ -1170,7 +1219,7 @@ HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned ch
     usleep(50000);
 
     /* Set the level of this channel */
-    if (H_FAILED(ret = _hantek_set_frontend_level(dev, channel_num, chan_level))) {
+    if (H_FAILED(ret = _hantek_set_frontend_level(dev, channel_num, this_chan->level))) {
         DEBUG("Failed to set level of channel, aborting.");
         goto done;
     }
@@ -1218,14 +1267,15 @@ HRESULT _hantek_set_trigger_level(struct hantek_device *dev, uint8_t trig_vertic
     HASSERT_ARG(NULL != dev);
 
     /* Convert to Q22.10 */
-    pos = (200 * trig_vertical_level * 1024)/256;
+    pos = ((200 * trig_vertical_level * 1024)/256);
 
-    if ((pos & 0x3ff) != 0) {
+    /* Round it off */
+    if ((pos & 0x3ff) > 0x1ff) {
         round = 1;
     }
 
     pos /= 1024;
-    pos += round;
+    pos += round + 28;
 
     /* Calculate threshold */
     high = pos + slop;
@@ -1241,13 +1291,17 @@ HRESULT _hantek_set_trigger_level(struct hantek_device *dev, uint8_t trig_vertic
     message[3] = high;
     message[4] = low;
     message[5] = low;
+
     message[6] = high;
+    message[7] = high;
     message[8] = low;
     message[9] = low;
+
     message[10] = high;
     message[11] = high;
     message[12] = low;
     message[13] = low;
+
     message[14] = high;
     message[15] = high;
     message[16] = low;
@@ -1356,7 +1410,7 @@ done:
     return ret;
 }
 
-HRESULT hantek_configure_trigger(struct hantek_device *dev, unsigned channel_num, enum hantek_trigger_mode mode, enum hantek_trigger_slope slope, enum hantek_coupling coupling, uint8_t trig_vertical_level, uint32_t trig_horiz_offset)
+HRESULT hantek_configure_trigger(struct hantek_device *dev, unsigned channel_num, enum hantek_trigger_mode mode, enum hantek_trigger_slope slope, enum hantek_coupling coupling, uint8_t trig_vertical_level, uint8_t trig_vertical_slop, uint32_t trig_horiz_offset)
 {
     HRESULT ret = H_OK;
 
@@ -1364,7 +1418,8 @@ HRESULT hantek_configure_trigger(struct hantek_device *dev, unsigned channel_num
     HASSERT_ARG(4 > channel_num);
     HASSERT_ARG(trig_horiz_offset <= 100);
 
-    if (H_FAILED(ret = _hantek_set_trigger_mode(dev->hdl, mode, slope, coupling))) {
+    /* Set trigger horizontal offset, with hard-coded slop for now */
+    if (H_FAILED(ret = _hantek_set_trigger_horizontal_offset(dev, trig_horiz_offset, 4))) {
         goto done;
     }
 
@@ -1372,13 +1427,24 @@ HRESULT hantek_configure_trigger(struct hantek_device *dev, unsigned channel_num
         goto done;
     }
 
+    /* Configure the channel levels */
+    for (size_t i = 0; i < HT_MAX_CHANNELS; i++) {
+        struct hantek_channel *chan = &dev->channels[i];
+
+        /* Set the level of this channel */
+        if (H_FAILED(ret = _hantek_set_frontend_level(dev, i, chan->level))) {
+            DEBUG("Failed to set level of channel, aborting.");
+            goto done;
+        }
+    }
+
+
     /* Set trigger voltage level */
-    if (H_FAILED(ret = _hantek_set_trigger_level(dev, trig_vertical_level, 4))) {
+    if (H_FAILED(ret = _hantek_set_trigger_level(dev, trig_vertical_level, trig_vertical_slop))) {
         goto done;
     }
 
-    /* Set trigger horizontal offset, with hard-coded slop for now */
-    if (H_FAILED(ret = _hantek_set_trigger_horizontal_offset(dev, trig_horiz_offset, 4))) {
+    if (H_FAILED(ret = _hantek_set_trigger_mode(dev->hdl, mode, slope, coupling))) {
         goto done;
     }
 

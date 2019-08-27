@@ -80,11 +80,6 @@ int main(int argc, char * const *argv)
         goto done;
     }
 
-    if (H_FAILED(hantek_set_sampling_rate(dev, HT_ST_500US))) {
-        printf("Failed to set sampling rate, aborting.\n");
-        goto done;
-    }
-
     for (size_t i = 0; i < 4; i++) {
         if (H_FAILED(hantek_configure_channel_frontend(dev, i, HT_VPD_50MV, HT_COUPLING_AC, false, true, 128))) {
             printf("Failed to set up channel %zu\n", i);
@@ -92,31 +87,33 @@ int main(int argc, char * const *argv)
         }
     }
 
-    if (H_FAILED(hantek_configure_trigger(dev, 0, HT_TRIGGER_EDGE, HT_TRIGGER_SLOPE_RISE, HT_COUPLING_AC, 160, 50))) {
-        printf("Failed to set triggering, aborting.\n");
-        goto done;
-    }
-
-    if (H_FAILED(hantek_configure_adc_range_scaling(dev))) {
-        printf("Failed to set ADC front-end max channels, aborting.\n");
-        goto done;
-    }
-
     if (H_FAILED(hantek_configure_adc_routing(dev))) {
         printf("Failed to set up ADC routing, aborting.\n");
         goto done;
     }
 
+    if (H_FAILED(hantek_set_sampling_rate(dev, HT_ST_500US))) {
+        printf("Failed to set sampling rate, aborting.\n");
+        goto done;
+    }
+
+    if (H_FAILED(hantek_configure_trigger(dev, 0, HT_TRIGGER_EDGE, HT_TRIGGER_SLOPE_RISE, HT_COUPLING_AC, 128, 1, 50))) {
+        printf("Failed to set triggering, aborting.\n");
+        goto done;
+    }
+
+    /*
     if (H_FAILED(hantek_get_status(dev, NULL))) {
         printf("Failed to get status, aborting.\n");
         goto done;
     }
+    */
 
     if (true == dump_bitstream_flash) {
         _dump_bitstream_flash(dev, bitstream_flash_filename);
     }
 
-    if (H_FAILED(hantek_start_capture(dev, HT_CAPTURE_AUTO))) {
+    if (H_FAILED(hantek_start_capture(dev, HT_CAPTURE_ROLL))) {
         printf("Failed to start capture, aborting.\n");
         goto done;
     }
