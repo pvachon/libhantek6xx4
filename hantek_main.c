@@ -15,6 +15,9 @@ static
 const char *bitstream_flash_filename = NULL;
 
 static
+uint8_t _trig_level = 128;
+
+static
 void _dump_bitstream_flash(struct hantek_device *dev, const char *filename)
 {
     FILE *fp = NULL;
@@ -50,7 +53,7 @@ void _parse_args(int argc, char *const *argv)
 {
     int c = -1;
 
-    while (0 < (c = getopt(argc, argv, "hB:"))) {
+    while (0 < (c = getopt(argc, argv, "hB:t:"))) {
         switch (c) {
         case 'h':
             fprintf(stderr, "No help here, yet\n");
@@ -60,6 +63,10 @@ void _parse_args(int argc, char *const *argv)
             printf("Dumping flash to file '%s'\n", optarg);
             bitstream_flash_filename = optarg;
             dump_bitstream_flash = true;
+            break;
+        case 't':
+            _trig_level = atoi(optarg);
+            printf("Setting trigger level to %u\n", (unsigned)_trig_level);
             break;
         default:
             fprintf(stderr, "Unknown argument: -%c\n", c);
@@ -97,7 +104,7 @@ int main(int argc, char * const *argv)
         goto done;
     }
 
-    if (H_FAILED(hantek_configure_trigger(dev, 0, HT_TRIGGER_EDGE, HT_TRIGGER_SLOPE_RISE, HT_COUPLING_AC, 128, 1, 50))) {
+    if (H_FAILED(hantek_configure_trigger(dev, 0, HT_TRIGGER_EDGE, HT_TRIGGER_SLOPE_RISE, HT_COUPLING_AC, _trig_level, 1, 50))) {
         printf("Failed to set triggering, aborting.\n");
         goto done;
     }

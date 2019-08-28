@@ -685,6 +685,82 @@ done:
 }
 
 static
+uint8_t _hantek_channel_setup(enum hantek_volts_per_div volts_per_div, enum hantek_coupling coupling, bool bandwidth_limit)
+{
+    uint8_t state = 0;
+
+    state |= (bandwidth_limit == true) << HT_CHAN_BW_LIMIT_SHIFT;
+    state |= (volts_per_div > HT_VPD_1V) << HT_CHAN_GT1V_SHIFT;
+    state |= (volts_per_div <= HT_VPD_1V) << HT_CHAN_LE1V_SHIFT;
+    state |= (volts_per_div > HT_VPD_100MV) << HT_CHAN_GT100MV_SHIFT;
+    state |= (volts_per_div <= HT_VPD_100MV) << HT_CHAN_LE100MV_SHIFT;
+    state |= (coupling == HT_COUPLING_DC) << HT_CHAN_COUPLING_SHIFT;
+    state |= 1 << 1;
+
+    return state;
+}
+
+static
+HRESULT _hantek_commit_frontend_config(struct hantek_device *dev)
+{
+    HRESULT ret = H_OK;
+
+    uint8_t message[8] = { HT_MSG_SEND_SPI, 0x0, 0x0, 0x0, 0x0, 0x0, HT_SPI_CS_SHIFT_REG, 0x0 };
+    size_t transferred = 0;
+
+    HASSERT_ARG(NULL != dev);
+
+    /* Fill in the settings for each channel */
+    for (size_t i = 0; i < HT_MAX_CHANNELS; i++) {
+        struct hantek_channel *chan = &dev->channels[i];
+        message[2 + i] = _hantek_channel_setup(chan->vpd, chan->coupling, chan->bw_limit);
+    }
+
+    if (H_FAILED(ret = _hantek_bulk_cmd_out(dev->hdl, message, sizeof(message), &transferred))) {
+        DEBUG("Failed to send frontend configuration, aborting.");
+        goto done;
+    }
+
+    if (sizeof(message) != transferred) {
+        DEBUG("Failed to transfer frontend configuration, aborting.");
+        ret = H_ERR_NOT_READY;
+        goto done;
+    }
+
+    transferred = 0;
+
+    /* This is what the SDK does */
+    usleep(4000);
+
+    /* This seems to force latching */
+    message[7] = 0x1;
+
+    for (size_t i = 0; i < HT_MAX_CHANNELS; i++) {
+        message[2 + i] &= (1 << HT_CHAN_BW_LIMIT_SHIFT) |
+                          (1 << HT_CHAN_COUPLING_SHIFT) |
+                          (1 << 1);
+    }
+
+    if (H_FAILED(ret = _hantek_bulk_cmd_out(dev->hdl, message, sizeof(message), &transferred)))  {
+        DEBUG("Failed to send second frontend configuration command, aborting.");
+        goto done;
+    }
+
+    if (sizeof(message) != transferred) {
+        DEBUG("Failed to send second stage of frontend configuration command, aborting.");
+        ret = H_ERR_NOT_READY;
+        goto done;
+    }
+
+    /* This is also what the SDK does */
+    usleep(50000);
+
+done:
+    return ret;
+}
+
+
+static
 uint32_t _hantek_tpd_to_spacing[HT_ST_MAX] = {
     [HT_ST_2NS] = 1,
     [HT_ST_5NS] = 1,
@@ -776,7 +852,8 @@ done:
 }
 
 /**
- * Set up the number of channels and clock divider
+ * Set up the number of channels and clock divider. Requires we shut down the analog frontend,
+ * per the HMCAD1511 manual.
  */
 static
 HRESULT _hantek_hmcad1511_set_channel_count(struct hantek_device *dev, size_t nr_chans)
@@ -820,7 +897,7 @@ HRESULT _hantek_hmcad1511_set_channel_count(struct hantek_device *dev, size_t nr
         goto done;
     }
 
-    /* Restore the front-end */
+    /* Restore power to the front-end */
     if (H_FAILED(ret = _hantek_hmcad1511_write_reg(dev, HMCAD1511_REG_SLEEP_PD, 0x0))) {
         goto done;
     }
@@ -1003,8 +1080,8 @@ HRESULT hantek_configure_adc_routing(struct hantek_device *dev)
         }
     }
 
-    if (H_FAILED(_hantek_configure_adc_range_scaling(dev))) {
-        printf("Failed to set ADC front-end max channels, aborting.\n");
+    if (H_FAILED(ret = _hantek_configure_adc_range_scaling(dev))) {
+        DEBUG("Failed to set ADC front-end max channels, aborting.");
         goto done;
     }
 
@@ -1025,22 +1102,6 @@ HRESULT hantek_configure_adc_routing(struct hantek_device *dev)
 
 done:
     return ret;
-}
-
-static
-uint8_t _hantek_channel_setup(enum hantek_volts_per_div volts_per_div, enum hantek_coupling coupling, bool bandwidth_limit)
-{
-    uint8_t state = 0;
-
-    state |= (bandwidth_limit == true) << HT_CHAN_BW_LIMIT_SHIFT;
-    state |= (volts_per_div > HT_VPD_1V) << HT_CHAN_GT1V_SHIFT;
-    state |= (volts_per_div <= HT_VPD_1V) << HT_CHAN_LE1V_SHIFT;
-    state |= (volts_per_div > HT_VPD_100MV) << HT_CHAN_GT100MV_SHIFT;
-    state |= (volts_per_div <= HT_VPD_100MV) << HT_CHAN_LE100MV_SHIFT;
-    state |= (coupling == HT_COUPLING_DC) << HT_CHAN_COUPLING_SHIFT;
-    state |= 1 << 1;
-
-    return state;
 }
 
 static const
@@ -1148,7 +1209,7 @@ HRESULT _hantek_set_frontend_level(struct hantek_device *dev, unsigned channel_n
         goto done;
     }
 
-    usleep(20000);
+    usleep(10000);
 
 done:
     return ret;
@@ -1158,9 +1219,7 @@ HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned ch
 {
     HRESULT ret = H_OK;
 
-    uint8_t message[8] = { HT_MSG_SEND_SPI, 0x0, 0x0, 0x0, 0x0, 0x0, HT_SPI_CS_SHIFT_REG, 0x0 };
     struct hantek_channel *this_chan = NULL;
-    size_t transferred = 0;
 
     HASSERT_ARG(NULL != dev);
     HASSERT_ARG(channel_num < HT_MAX_CHANNELS);
@@ -1173,50 +1232,11 @@ HRESULT hantek_configure_channel_frontend(struct hantek_device *dev, unsigned ch
     this_chan->enabled = enable;
     this_chan->level = chan_level;
 
-    /* Fill in the settings for each channel */
-    for (size_t i = 0; i < HT_MAX_CHANNELS; i++) {
-        struct hantek_channel *chan = &dev->channels[i];
-        message[2 + i] = _hantek_channel_setup(chan->vpd, chan->coupling, chan->bw_limit);
-    }
-
-    if (H_FAILED(ret = _hantek_bulk_cmd_out(dev->hdl, message, sizeof(message), &transferred))) {
-        DEBUG("Failed to send frontend configuration, aborting.");
+    /* Commit the frontend configuration */
+    if (H_FAILED(ret = _hantek_commit_frontend_config(dev))) {
+        DEBUG("Failed to configure frontend, aborting.");
         goto done;
     }
-
-    if (sizeof(message) != transferred) {
-        DEBUG("Failed to transfer frontend configuration, aborting.");
-        ret = H_ERR_NOT_READY;
-        goto done;
-    }
-
-    transferred = 0;
-
-    /* This is what the SDK does */
-    usleep(4000);
-
-    /* This seems to force latching */
-    message[7] = 0x1;
-
-    for (size_t i = 0; i < HT_MAX_CHANNELS; i++) {
-        message[2 + i] &= (1 << HT_CHAN_BW_LIMIT_SHIFT) |
-                          (1 << HT_CHAN_COUPLING_SHIFT) |
-                          (1 << 1);
-    }
-
-    if (H_FAILED(ret = _hantek_bulk_cmd_out(dev->hdl, message, sizeof(message), &transferred)))  {
-        DEBUG("Failed to send second frontend configuration command, aborting.");
-        goto done;
-    }
-
-    if (sizeof(message) != transferred) {
-        DEBUG("Failed to send second stage of frontend configuration command, aborting.");
-        ret = H_ERR_NOT_READY;
-        goto done;
-    }
-
-    /* This is also what the SDK does */
-    usleep(50000);
 
     /* Set the level of this channel */
     if (H_FAILED(ret = _hantek_set_frontend_level(dev, channel_num, this_chan->level))) {
@@ -1332,8 +1352,8 @@ HRESULT _hantek_set_trigger_horizontal_offset(struct hantek_device *dev, uint32_
 
     uint8_t message[14] = { HT_MSG_SET_TRIG_HORIZ_POS, 0x0 };
     size_t transferred = 0;
-    uint64_t after = 0x831c4,
-             before = 0x7d7d0;
+    uint64_t leading = 0x831c4,
+             trailing = 0x7d7d0;
 
     HASSERT_ARG(NULL != dev);
 
@@ -1341,17 +1361,19 @@ HRESULT _hantek_set_trigger_horizontal_offset(struct hantek_device *dev, uint32_
 
     /* FIXME: hardcoded for experimentation */
 
-    message[2] = (after >> 0) & 0xff;
-    message[3] = (after >> 8) & 0xff;
-    message[4] = (after >> 16) & 0xff;
-    message[5] = (after >> 24) & 0xff;
-    message[6] = (after >> 32) & 0xff;
+    message[2] = (leading >> 0) & 0xff;
+    message[3] = (leading >> 8) & 0xff;
+    message[4] = (leading >> 16) & 0xff;
+    message[5] = (leading >> 24) & 0xff;
+    message[6] = (leading >> 32) & 0xff;
+    message[7] = (leading >> 40) & 0xff;
 
-    message[7] = (before >> 0) & 0xff;
-    message[8] = (before >> 8) & 0xff;
-    message[9] = (before >> 16) & 0xff;
-    message[10] = (before >> 24) & 0xff;
-    message[11] = (before >> 32) & 0xff;
+    message[8] = (trailing >> 0) & 0xff;
+    message[9] = (trailing >> 8) & 0xff;
+    message[10] = (trailing >> 16) & 0xff;
+    message[11] = (trailing >> 24) & 0xff;
+    message[12] = (trailing >> 32) & 0xff;
+    message[13] = (trailing >> 40) & 0xff;
 
     if (H_FAILED(ret = _hantek_bulk_cmd_out(dev->hdl, message, sizeof(message), &transferred))) {
         DEBUG("Failed to set horizontal offset, aborting.");
@@ -1427,18 +1449,6 @@ HRESULT hantek_configure_trigger(struct hantek_device *dev, unsigned channel_num
         goto done;
     }
 
-    /* Configure the channel levels */
-    for (size_t i = 0; i < HT_MAX_CHANNELS; i++) {
-        struct hantek_channel *chan = &dev->channels[i];
-
-        /* Set the level of this channel */
-        if (H_FAILED(ret = _hantek_set_frontend_level(dev, i, chan->level))) {
-            DEBUG("Failed to set level of channel, aborting.");
-            goto done;
-        }
-    }
-
-
     /* Set trigger voltage level */
     if (H_FAILED(ret = _hantek_set_trigger_level(dev, trig_vertical_level, trig_vertical_slop))) {
         goto done;
@@ -1485,7 +1495,7 @@ HRESULT _hantek_capture_read_status(struct hantek_device *dev, uint64_t *pstatus
             ((uint64_t)result[1] << 8) |
             ((uint64_t)result[0]);
 
-    DEBUG("Capture Status word: %010lx\n", *pstatus);
+    DEBUG("Capture Status word: 0x%010lx", *pstatus);
 
 done:
     return ret;

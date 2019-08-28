@@ -36,7 +36,7 @@ struct hantek_channel {
     /**
      * The "level" of this channel
      */
-    uint8_t level;
+    uint16_t level;
 
     /**
      * Volts per division for this channel
