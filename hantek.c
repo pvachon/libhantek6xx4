@@ -1502,16 +1502,41 @@ done:
 }
 
 static
-HRESULT __hantek_send_readback_req(struct hantek_device *dev)
+HRESULT __hantek_send_prepare_readback_req(struct hantek_device *dev)
 {
     HRESULT ret = H_OK;
 
-    uint8_t message[4] = { HT_MSG_SEND_START_CAPTURE, 0x00, 0x00, 0x00 };
+    uint8_t message[4] = { HT_MSG_BUFFER_PREPARE_TRANSFER, 0x00 };
 
     HASSERT_ARG(NULL != dev);
 
 
 
+    return ret;
+}
+
+static
+HRESULT __hantek_request_read_buffer(struct hantek_device *dev)
+{
+    HRESULT ret = H_OK;
+
+    uint8_t message[4] = { HT_MSG_READBACK_BUFFER, 0x00 };
+    size_t transferred = 0;
+    size_t cap_buf_len = 0;
+
+    HASSERT_ARG(NULL != dev);
+
+    cap_buf_len = dev->capture_buffer_len >> 1;
+
+    message[2] = cap_buf_len & 0xff;
+    message[3] = (cap_buf_len >> 8) & 0xff;
+
+    if (H_FAILED(ret = _hantek_bulk_cmd_out(dev->hdl, message, sizeof(message), &transferred))) {
+        DEBUG("Failed to send set trigger level message, aborting.");
+        goto done;
+    }
+
+done:
     return ret;
 }
 
@@ -1526,6 +1551,13 @@ HRESULT _hantek_read_capture_buffer(struct hantek_device *dev, uint8_t *ch1, uin
         DEBUG("Failed to send readback request, aborting.");
         goto done;
     }
+
+    if (H_FAILED(ret = __hantek_request_read_buffer(dev))) {
+        DEBUG("Failed to send request to initiate buffer read, aborting.");
+        goto done;
+    }
+
+    /* TODO: read back the buffer, until there is an empty result */
 
 done:
     return ret;

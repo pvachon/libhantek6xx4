@@ -45,12 +45,9 @@
 #define HT_REQUEST_CHECK_READY              0xb2
 
 /**
- * Message IDs, to the best of our guesses
+ * Message IDs
  */
 
-/**
- * Send up to 32 bits of data across the device's SPI bus
- */
 #define HT_MSG_POSITION_CH0                 0x00
 #define HT_MSG_POSITION_CH1                 0x01
 #define HT_MSG_POSITION_CH2                 0x02
@@ -59,13 +56,16 @@
 #define HT_MSG_READBACK_BUFFER              0x05
 #define HT_MSG_GET_STATUS                   0x06
 #define HT_MSG_SET_TRIGGER_LEVEL            0x07
+/**
+ * Send up to 32 bits of data across the device's SPI bus
+ */
 #define HT_MSG_SEND_SPI                     0x08
 #define HT_MSG_GET_HW_VERSION               0x09
 /* missing 0x0a */
 /* missing 0x0b */
 #define HT_MSG_INITIALIZE                   0x0c
 #define HT_MSG_BUFFER_STATUS                0x0d
-/* missing 0x0e */
+#define HT_MSG_BUFFER_PREPARE_TRANSFER      0x0e
 #define HT_MSG_SET_TIME_DIVISION            0x0f
 #define HT_MSG_SET_TRIG_HORIZ_POS           0x10
 #define HT_MSG_CONFIGURE_TRIGGER            0x11
