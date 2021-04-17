@@ -1543,11 +1543,20 @@ done:
 static
 HRESULT _hantek_read_capture_buffer(struct hantek_device *dev, uint8_t *ch1, uint8_t *ch2, uint8_t *ch3, uint8_t *ch4)
 {
+    static const int32_t BLOCK_SIZE = 512;
+    static const int32_t TAIL_SIZE = 32;
+    static const int32_t CHANNEL_COUNT = 4;
+    static const int32_t CHANNEL_LEN = BLOCK_SIZE/CHANNEL_COUNT;
+    static const int32_t PACK_SIZE = BLOCK_SIZE+TAIL_SIZE;
+    static const int32_t CAPTURE_COUNT = 8; // stalls after 8
+
+    uint8_t test[PACK_SIZE];
+    memset(test,0, PACK_SIZE);
     HRESULT ret = H_OK;
 
     HASSERT_ARG(NULL != dev);
 
-    if (H_FAILED(ret = __hantek_send_readback_req(dev))) {
+    if (H_FAILED(ret = __hantek_send_prepare_readback_req(dev))) {
         DEBUG("Failed to send readback request, aborting.");
         goto done;
     }
@@ -1557,7 +1566,40 @@ HRESULT _hantek_read_capture_buffer(struct hantek_device *dev, uint8_t *ch1, uin
         goto done;
     }
 
-    /* TODO: read back the buffer, until there is an empty result */
+    printf("reading buffer");
+
+
+    int i = 0;
+    int j;
+    while(i<CAPTURE_COUNT){
+        if (H_FAILED(ret = _hantek_bulk_read_in(dev->hdl, test, PACK_SIZE))) {
+            DEBUG("Failed to read in status word, aborting.");
+            goto done;
+        }
+        //printf("\e[1;1H\e[2J");
+        //printf("packt %d\n", i);
+        // raw channel content 
+        //hexdump_dump_hex(test, BLOCK_SIZE);
+        // some sort of tail
+        //hexdump_dump_hex(test+BLOCK_SIZE, TAIL_SIZE);
+        for (j=0 ; j<BLOCK_SIZE;){
+            int index = i*CHANNEL_LEN + j/CHANNEL_COUNT ; 
+            ch1[index] = test[j];
+            ch2[index] = test[j+1];
+            ch3[index] = test[j+2];
+            ch4[index] = test[j+3];
+            j+=CHANNEL_COUNT;
+        }
+        i++;
+    }
+
+    /*
+    hexdump_dump_hex(test, PACK_SIZE);
+    hexdump_dump_hex(ch1, CHANNEL_LEN);
+    hexdump_dump_hex(ch2, CHANNEL_LEN);
+    hexdump_dump_hex(ch3, CHANNEL_LEN);
+    hexdump_dump_hex(ch4, CHANNEL_LEN);
+    */
 
 done:
     return ret;
@@ -1575,6 +1617,8 @@ HRESULT hantek_retrieve_buffer(struct hantek_device *dev, uint8_t *ch1, uint8_t 
         DEBUG("Failed to get capture readback status, aborting.");
         goto done;
     }
+
+    _hantek_read_capture_buffer(dev, ch1, ch2, ch3, ch4);
 
 done:
     return ret;

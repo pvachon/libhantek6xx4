@@ -79,6 +79,7 @@ enum hantek_volts_per_div {
 enum hantek_coupling {
     HT_COUPLING_DC = 0,
     HT_COUPLING_AC = 1,
+    HT_COUPLING_GND = 2, // not-sure
 };
 
 enum hantek_trigger_mode {
