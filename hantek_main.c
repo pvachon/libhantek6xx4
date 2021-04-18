@@ -1,5 +1,6 @@
 #include <hantek.h>
 #include <hantek_flash.h>
+#include <hantek_hexdump.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -76,6 +77,10 @@ void _parse_args(int argc, char *const *argv)
 
 int main(int argc, char * const *argv)
 {
+    uint8_t ch1[128*8];
+    uint8_t ch2[128*8];
+    uint8_t ch3[128*8];
+    uint8_t ch4[128*8];
     printf("Hantek Device Test Tool\n");
 
     struct hantek_device *dev = NULL;
@@ -88,7 +93,7 @@ int main(int argc, char * const *argv)
     }
 
     for (size_t i = 0; i < 4; i++) {
-        if (H_FAILED(hantek_configure_channel_frontend(dev, i, HT_VPD_50MV, HT_COUPLING_AC, false, true, 128))) {
+        if (H_FAILED(hantek_configure_channel_frontend(dev, i, HT_VPD_200MV, HT_COUPLING_DC, false, true, 128))) {
             printf("Failed to set up channel %zu\n", i);
             goto done;
         }
@@ -104,42 +109,47 @@ int main(int argc, char * const *argv)
         goto done;
     }
 
-    if (H_FAILED(hantek_configure_trigger(dev, 0, HT_TRIGGER_EDGE, HT_TRIGGER_SLOPE_RISE, HT_COUPLING_AC, _trig_level, 1, 50))) {
+    if (H_FAILED(hantek_configure_trigger(dev, 0, HT_TRIGGER_EDGE, HT_TRIGGER_SLOPE_RISE, HT_COUPLING_DC, _trig_level, 1, 50))) {
         printf("Failed to set triggering, aborting.\n");
         goto done;
     }
 
-    /*
     if (H_FAILED(hantek_get_status(dev, NULL))) {
         printf("Failed to get status, aborting.\n");
         goto done;
     }
-    */
 
     if (true == dump_bitstream_flash) {
         _dump_bitstream_flash(dev, bitstream_flash_filename);
     }
 
-    if (H_FAILED(hantek_start_capture(dev, HT_CAPTURE_ROLL))) {
-        printf("Failed to start capture, aborting.\n");
-        goto done;
-    }
-
-    printf("Waiting for ready flag to fire.\n");
-
-    bool ready = false;
-    while (false == ready) {
-        if (H_FAILED(hantek_get_status(dev, &ready))) {
-            printf("Failed to get status, aborting.\n");
+    while (true){
+        if (H_FAILED(hantek_start_capture(dev, HT_CAPTURE_ROLL))) {
+            printf("Failed to start capture, aborting.\n");
             goto done;
         }
-    }
 
-    printf("Got ready flag, reading back the buffer\n");
+        printf("Waiting for ready flag to fire.\n");
 
-    if (H_FAILED(hantek_retrieve_buffer(dev, NULL, NULL, NULL, NULL))) {
-        printf("Failed to retrieve buffer, aborting.\n");
-        goto done;
+        bool ready = false;
+        while (false == ready) {
+            if (H_FAILED(hantek_get_status(dev, &ready))) {
+                printf("Failed to get status, aborting.\n");
+                goto done;
+            }
+        }
+
+        printf("Got ready flag, reading back the buffer\n");
+
+        if (H_FAILED(hantek_retrieve_buffer(dev, ch1, ch2, ch3, ch4))) {
+            printf("Failed to retrieve buffer, aborting.\n");
+            goto done;
+        }
+
+        hexdump_dump_hex(ch1, 128*8);
+        hexdump_dump_hex(ch2, 128*8);
+        hexdump_dump_hex(ch3, 128*8);
+        hexdump_dump_hex(ch4, 128*8);
     }
 
 done:
