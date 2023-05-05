@@ -370,10 +370,42 @@ HRESULT _hantek_wake_device(libusb_device_handle *hdl)
 {
     HRESULT ret = H_OK;
 
+    /* SPI byte order:
+     * byte 5 (address for HMCAD1511) - first byte out, out MSB first
+     * byte 4 - next byte out, MSB first
+     * byte 3 - ..
+     */
+
     static
     uint8_t wake_cmds[5][8] = {
         { HT_MSG_SEND_SPI, 0x00, 0x00, 0x77, 0x47, HMCAD1511_REG_LVDS_TERM,     HT_SPI_CS_HMCAD1511, 0x00 },
         { HT_MSG_SEND_SPI, 0x00, 0x00, 0x03, 0x00, HMCAD1511_REG_GAIN_CONTROL,  HT_SPI_CS_HMCAD1511, 0x00 },
+
+        /* Register bit order */
+        /* 0x30 0x00 0x65 */
+        /*
+         * Band Select Clock: 2'b11 Divider: x / 8
+         * 14-bit reference counter: 6'b011000 (24)
+         * CR: 01
+         */
+        /* 0x0f 0xf1 0x28 */
+        /*
+         * Prescaler Value: 2'b00 - 8/9
+         * Power Down: NORMAL OPERATION
+         *
+         * Current Setting 2: 3'b111 - 2.5mA
+         * Current Setting 1: 3'b111 - 2.5mA
+         * Output Power Level: 3'b11 - 11.0 mA; -5dBm into 50 ohm
+         * Phase Detector Polarity: 1 - Passive Phase
+         * Muxout Control: M1 = 3'b001 - Digital Lock Detect
+         * Core Power Level: 2'b10 - 15mA
+         * CR: 00
+         */
+        /* 0x01 0x38 0x12 */
+        /*
+         *
+         * CR: 10
+         */
         { HT_MSG_SEND_SPI, 0x00, 0x00, 0x65, 0x00, 0x30, HT_SPI_CS_ADF4360, 0x00 },
         { HT_MSG_SEND_SPI, 0x00, 0x00, 0x28, 0xF1, 0x0F, HT_SPI_CS_ADF4360, 0x00 },
         { HT_MSG_SEND_SPI, 0x00, 0x00, 0x12, 0x38, 0x01, HT_SPI_CS_ADF4360, 0x00 }
@@ -1136,7 +1168,8 @@ HRESULT _hantek_set_frontend_level(struct hantek_device *dev, unsigned channel_n
              mode_map = 0;
     double x = 0.0;
     const uint16_t *line = NULL;
-    size_t transferred = 0;
+    size_t transferred = 0,
+           nr_chans = 0;
 
     switch (channel_num) {
     case 0:
@@ -1157,6 +1190,28 @@ HRESULT _hantek_set_frontend_level(struct hantek_device *dev, unsigned channel_n
         goto done;
     }
 
+    for (size_t i = 0; i < HT_MAX_CHANNELS; i++) {
+        if (dev->channels[i].enabled == true) {
+            nr_chans++;
+        }
+    }
+
+    switch (nr_chans) {
+    case 1:
+        mode_map = 0;
+        break;
+    case 2:
+        mode_map = 2;
+        break;
+    case 4:
+        mode_map = 4;
+        break;
+    default:
+        DEBUG("Weird number of channels enabled (%zu), aborting.", nr_chans);
+        ret = H_ERR_INVAL_CHANNELS;
+        goto done;
+    }
+
     switch (dev->channels[channel_num].vpd) {
     case 0:
     case 1:
@@ -1164,17 +1219,17 @@ HRESULT _hantek_set_frontend_level(struct hantek_device *dev, unsigned channel_n
     case 3:
     case 4:
     case 5:
-        offset = 0x3c;
+        offset = 60;
         break;
     case 6:
     case 7:
     case 8:
-        offset = 0x60;
+        offset = 96;
         break;
     case 9:
     case 10:
     case 11:
-        offset = 0x84;
+        offset = 132;
         break;
     default:
         DEBUG("Invalid Volts/Division: %u", dev->channels[channel_num].vpd);

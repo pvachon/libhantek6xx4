@@ -1,5 +1,13 @@
 #pragma once
 
+/**
+ * Software reset register. Set bit 0 to 1 to reset all registers to defaults
+ */
+#define HMCAD1511_REG_RST                   0x0
+#define HMCAD1511_REG_RST_RST               0x1
+
+
+
 #define HMCAD1511_REG_SLEEP_PD              0x0f
 #define HMCAD1511_REG_SLEEP_PD_PD           (1 << 9)
 

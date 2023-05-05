@@ -48,28 +48,82 @@
  * Message IDs
  */
 
+/**
+ * Channel Position Configuration. Each channel has a unique command to adjust its
+ * location on the virtual graticule.
+ * Length: 4 bytes
+ *  - 2 bytes: Little Endian Command ID (one of the below for the 4 channels)
+ *  - 2 bytes: Channel position, little endian.
+ *
+ * Calculating the channel position is a bit involved, but seems to require scaling
+ * between 0-255, w.r.t. some calibration data pulled from the I2C EEPROM.
+ */
 #define HT_MSG_POSITION_CH0                 0x00
 #define HT_MSG_POSITION_CH1                 0x01
 #define HT_MSG_POSITION_CH2                 0x02
-#define HT_MSG_SEND_START_CAPTURE           0x03
 #define HT_MSG_POSITION_CH3                 0x04
+
+#define HT_MSG_SEND_START_CAPTURE           0x03
 #define HT_MSG_READBACK_BUFFER              0x05
 #define HT_MSG_GET_STATUS                   0x06
 #define HT_MSG_SET_TRIGGER_LEVEL            0x07
+
 /**
  * Send up to 32 bits of data across the device's SPI bus
+ * Length: 8 bytes
+ *  - 2 bytes: Little Endian Command ID
+ *  - 4 bytes: Bytes to clock out (big endian - last byte specified, first byte clocked)
+ *  - 2 bytes: Chip Select/Device ID
+ *  struct ht_msg_spi {
+ *      uint16_t usb_msg;
+ *      uint8_t spi_msg_be[4];
+ *      uint16_t spi_cs; // documented below
+ *  }
  */
 #define HT_MSG_SEND_SPI                     0x08
+
 #define HT_MSG_GET_HW_VERSION               0x09
 /* missing 0x0a */
 /* missing 0x0b */
 #define HT_MSG_INITIALIZE                   0x0c
 #define HT_MSG_BUFFER_STATUS                0x0d
 #define HT_MSG_BUFFER_PREPARE_TRANSFER      0x0e
+
+/**
+ * USB Message to set time division
+ * Length: 6 bytes
+ *  - 2 bytes: Little Endian Command ID (0xf)
+ *  - 4 bytes: time base, little endian, in nanoseconds - 1
+ */
 #define HT_MSG_SET_TIME_DIVISION            0x0f
+
+/**
+ * TODO
+ * USB Message to set horizontal trigger position.
+ * Length: 14 bytes
+ *  - 2 bytes: Little Endian Command ID
+ *  - 6 bytes: looks like buffer bytes before trigger?
+ *  - 6 bytes: hysteresis of some sort? Hard to say?
+ */
 #define HT_MSG_SET_TRIG_HORIZ_POS           0x10
+
+/**
+ * USB Message to set trigger mode
+ * Length: 6 bytes
+ *  - 2 bytes: Little Endian Command ID
+ *  - 1 byte: Trigger Mode
+ *  - 1 byte: Trigger Slope (+/-)
+ *  - 1 byte: Trigger Coupling
+ *  - 1 byte: SBZ
+ */
 #define HT_MSG_CONFIGURE_TRIGGER            0x11
 #define HT_MSG_SET_TRIGGER_SOURCE           0x12
+/**
+ * USB Message to set up a special trigger (i.e. pulse or video)
+ *  - 2 bytes: Little Endian Command ID (0x13)
+ *
+ */
+#define HT_MSG_SET_SPECIAL_TRIGGER          0x13
 
 /**
  * Channel configuration byte bitshifts
