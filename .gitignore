@@ -4,3 +4,5 @@
 *.a
 hantek
 *.sw*
+.vscode
+
